@@ -1,0 +1,26 @@
+spec_version: 1
+name: code-review-env
+version: "1.0.0"
+description: "OpenEnv environment for AI code review benchmarking. Agents review GitHub-style PR diffs, flag bugs, classify severity, and produce review comments — graded against expert annotations."
+type: text
+
+tasks:
+  - id: simple_review
+    difficulty: easy
+    description: "Identify obvious bugs in short Python diffs (<50 lines): off-by-one errors, missing null checks, naming violations."
+  - id: logic_review
+    difficulty: medium
+    description: "Detect subtle logic errors in realistic PRs (100-200 lines): wrong conditions, race conditions, edge-case misses."
+  - id: security_review
+    difficulty: hard
+    description: "Find security vulnerabilities (OWASP Top-10): SQL injection, insecure deserialization, auth bypass, secret leakage."
+
+observation_space: DiffObservation
+action_space: ReviewAction
+reward_range: [0.0, 1.0]
+
+runtime:
+  dockerfile: server/Dockerfile
+
+app:
+  port: 8000

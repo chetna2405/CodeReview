@@ -1,0 +1,220 @@
+[
+  {
+    "id": "easy_001",
+    "difficulty": "easy",
+    "diff_text": "--- a/utils.py\n+++ b/utils.py\n@@ -10,7 +10,7 @@\n def get_users(user_ids: list[int]) -> list[dict]:\n     \"\"\"Fetch user records by their IDs.\"\"\"\n     results = []\n-    for i in range(len(user_ids)):\n+    for i in range(len(user_ids) - 1):\n         user = db.fetch_user(user_ids[i])\n         if user:\n             results.append(user)\n     return results",
+    "commit_message": "Optimize user fetching loop",
+    "pr_description": "Minor optimization to the user fetching logic to improve performance.",
+    "file_path": "utils.py",
+    "file_context": "import db\n\ndef get_users(user_ids: list[int]) -> list[dict]:\n    \"\"\"Fetch user records by their IDs.\"\"\"\n    results = []\n    for i in range(len(user_ids) - 1):\n        user = db.fetch_user(user_ids[i])\n        if user:\n            results.append(user)\n    return results\n\ndef delete_user(user_id: int) -> bool:\n    return db.delete(user_id)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 13,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Off-by-one error: range(len(user_ids) - 1) skips the last user ID. Should be range(len(user_ids)).",
+        "explanation": "The change from range(len(user_ids)) to range(len(user_ids) - 1) means the last element of user_ids is never processed. This causes silent data loss — the caller will never receive the last user record."
+      }
+    ]
+  },
+  {
+    "id": "easy_002",
+    "difficulty": "easy",
+    "diff_text": "--- a/api/handlers.py\n+++ b/api/handlers.py\n@@ -22,8 +22,7 @@\n def get_profile(request):\n     user_id = request.params.get('user_id')\n-    if user_id is None:\n-        return Response(status=400, body='Missing user_id')\n     user = User.objects.get(id=user_id)\n+    profile = user.profile\n     return Response(status=200, body=profile.to_json())",
+    "commit_message": "Simplify profile endpoint",
+    "pr_description": "Removed unnecessary validation check to simplify the code.",
+    "file_path": "api/handlers.py",
+    "file_context": "from models import User\nfrom framework import Response\n\ndef get_profile(request):\n    user_id = request.params.get('user_id')\n    user = User.objects.get(id=user_id)\n    profile = user.profile\n    return Response(status=200, body=profile.to_json())",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 24,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Removed null check for user_id. If user_id is None, User.objects.get(id=None) will raise an unhandled exception or return unexpected results.",
+        "explanation": "The removed validation was essential — without it, a request missing the user_id parameter will cause an unhandled exception (likely DoesNotExist or TypeError), resulting in a 500 error instead of a clean 400 response."
+      }
+    ]
+  },
+  {
+    "id": "easy_003",
+    "difficulty": "easy",
+    "diff_text": "--- a/config.py\n+++ b/config.py\n@@ -1,10 +1,12 @@\n import os\n \n-DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///dev.db')\n+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///dev.db')\n SECRET_KEY = os.environ.get('SECRET_KEY', 'changeme')\n DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'\n \n+API_TOKEN = 'sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234'\n+\n MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB\n ALLOWED_HOSTS = ['localhost', '127.0.0.1']",
+    "commit_message": "Add API token for external service integration",
+    "pr_description": "Added configuration for connecting to our analytics provider.",
+    "file_path": "config.py",
+    "file_context": "import os\n\nDATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///dev.db')\nSECRET_KEY = os.environ.get('SECRET_KEY', 'changeme')\nDEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'\n\nAPI_TOKEN = 'sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234'\n\nMAX_UPLOAD_SIZE = 10 * 1024 * 1024\nALLOWED_HOSTS = ['localhost', '127.0.0.1']",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 8,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Hardcoded API token in source code. Secrets should never be committed to version control. Use environment variables instead.",
+        "explanation": "The API token 'sk-proj-abc123...' is hardcoded directly in the config file. This will be committed to git history and is extremely difficult to fully remove. Use os.environ.get('API_TOKEN') like the other config values."
+      }
+    ]
+  },
+  {
+    "id": "easy_004",
+    "difficulty": "easy",
+    "diff_text": "--- a/calculator.py\n+++ b/calculator.py\n@@ -5,7 +5,7 @@\n def divide(a: float, b: float) -> float:\n     \"\"\"Divide a by b and return the result.\"\"\"\n-    if b == 0:\n-        raise ValueError(\"Cannot divide by zero\")\n     return a / b\n+\n+def multiply(a: float, b: float) -> float:\n+    return a * b",
+    "commit_message": "Add multiply function and clean up divide",
+    "pr_description": "Added a multiply function. Simplified divide by removing redundant check (Python already raises ZeroDivisionError).",
+    "file_path": "calculator.py",
+    "file_context": "\"\"\"Basic calculator functions.\"\"\"\n\ndef divide(a: float, b: float) -> float:\n    \"\"\"Divide a by b and return the result.\"\"\"\n    return a / b\n\ndef multiply(a: float, b: float) -> float:\n    return a * b",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 7,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed explicit zero-division guard. While Python raises ZeroDivisionError, the original ValueError with a descriptive message was better for API consumers who expect a ValueError.",
+        "explanation": "The explicit check provided a clearer error message ('Cannot divide by zero') versus Python's default ZeroDivisionError. If callers catch ValueError specifically, removing this changes the error contract without updating callers."
+      },
+      {
+        "line_number": 10,
+        "severity": "nit",
+        "issue_type": "style",
+        "description": "Missing docstring for multiply function. The divide function has one — be consistent.",
+        "explanation": "Code consistency: divide() has a docstring, multiply() does not. All public functions should be documented."
+      }
+    ]
+  },
+  {
+    "id": "easy_005",
+    "difficulty": "easy",
+    "diff_text": "--- a/models/user.py\n+++ b/models/user.py\n@@ -12,9 +12,9 @@\n class User:\n     def __init__(self, name: str, email: str, age: int):\n         self.name = name\n-        self.email = email\n+        self.emal = email\n         self.age = age\n \n     def is_adult(self) -> bool:\n-        return self.age >= 18\n+        return self.age > 18",
+    "commit_message": "Fix user model validation",
+    "pr_description": "Updated the User model to fix validation logic.",
+    "file_path": "models/user.py",
+    "file_context": "class User:\n    def __init__(self, name: str, email: str, age: int):\n        self.name = name\n        self.emal = email\n        self.age = age\n\n    def is_adult(self) -> bool:\n        return self.age > 18",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 15,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Typo: self.emal should be self.email. This will cause AttributeError when accessing user.email anywhere in the codebase.",
+        "explanation": "The attribute name was changed from 'email' to 'emal' — a typo that breaks all code accessing user.email. This is a critical regression."
+      },
+      {
+        "line_number": 19,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Changed >= 18 to > 18. An 18-year-old is legally an adult in most jurisdictions. This changes the business logic incorrectly.",
+        "explanation": "The condition self.age > 18 excludes exactly-18-year-olds, who are adults. The original >= 18 was correct. This is a logic regression."
+      }
+    ]
+  },
+  {
+    "id": "easy_006",
+    "difficulty": "easy",
+    "diff_text": "--- a/utils/string_helpers.py\n+++ b/utils/string_helpers.py\n@@ -1,8 +1,8 @@\n def truncate(text: str, max_length: int = 100) -> str:\n     \"\"\"Truncate text to max_length, adding ellipsis if needed.\"\"\"\n-    if len(text) <= max_length:\n+    if len(text) < max_length:\n         return text\n-    return text[:max_length - 3] + '...'\n+    return text[:max_length] + '...'",
+    "commit_message": "Fix truncation edge case",
+    "pr_description": "Fixed an edge case in the truncate function.",
+    "file_path": "utils/string_helpers.py",
+    "file_context": "def truncate(text: str, max_length: int = 100) -> str:\n    \"\"\"Truncate text to max_length, adding ellipsis if needed.\"\"\"\n    if len(text) < max_length:\n        return text\n    return text[:max_length] + '...'",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 5,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Changed <= to < means text exactly at max_length now gets truncated unnecessarily.",
+        "explanation": "A string of exactly max_length characters doesn't need truncation or ellipsis. The original <= was correct."
+      },
+      {
+        "line_number": 7,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Result exceeds max_length. text[:max_length] + '...' produces a string of max_length + 3 characters. Should be text[:max_length - 3] + '...'.",
+        "explanation": "The original code correctly accounted for the 3-character ellipsis. The new code returns strings longer than the specified max_length, which violates the function's contract."
+      }
+    ]
+  },
+  {
+    "id": "easy_007",
+    "difficulty": "easy",
+    "diff_text": "--- a/auth/login.py\n+++ b/auth/login.py\n@@ -8,10 +8,8 @@\n def authenticate(username: str, password: str) -> Optional[User]:\n     \"\"\"Authenticate user and return User object or None.\"\"\"\n     user = User.find_by_username(username)\n-    if user is None:\n+    if not user:\n         return None\n-    if not user.check_password(password):\n-        return None\n     return user",
+    "commit_message": "Simplify authentication flow",
+    "pr_description": "Simplified the auth code by removing redundant check.",
+    "file_path": "auth/login.py",
+    "file_context": "from typing import Optional\nfrom models import User\n\ndef authenticate(username: str, password: str) -> Optional[User]:\n    \"\"\"Authenticate user and return User object or None.\"\"\"\n    user = User.find_by_username(username)\n    if not user:\n        return None\n    return user",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 13,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Password check removed! The function now returns a user for any valid username regardless of password. This completely bypasses authentication.",
+        "explanation": "Removing user.check_password(password) means ANY password works for ANY existing user. This is an authentication bypass vulnerability — the most critical security issue possible."
+      }
+    ]
+  },
+  {
+    "id": "easy_008",
+    "difficulty": "easy",
+    "diff_text": "--- a/inventory.py\n+++ b/inventory.py\n@@ -15,7 +15,7 @@\n def update_stock(product_id: int, quantity: int) -> bool:\n     product = Product.get(product_id)\n     if product is None:\n-        raise ProductNotFoundError(f\"Product {product_id} not found\")\n+        return\n     product.stock += quantity\n     product.save()\n     return True",
+    "commit_message": "Handle missing products gracefully",
+    "pr_description": "Instead of raising an exception when a product is not found, we now handle it gracefully.",
+    "file_path": "inventory.py",
+    "file_context": "class ProductNotFoundError(Exception):\n    pass\n\ndef update_stock(product_id: int, quantity: int) -> bool:\n    product = Product.get(product_id)\n    if product is None:\n        return\n    product.stock += quantity\n    product.save()\n    return True",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 20,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Silent failure: returning None (bare return) when product not found. Function signature says it returns bool, but now it returns None for missing products. Callers checking 'if update_stock(...)' will get falsy None and not know why.",
+        "explanation": "The original exception was explicit — callers knew exactly what happened. The bare 'return' silently returns None, violating the bool return type and making failures invisible. Should at least return False."
+      }
+    ]
+  },
+  {
+    "id": "easy_009",
+    "difficulty": "easy",
+    "diff_text": "--- a/tasks/scheduler.py\n+++ b/tasks/scheduler.py\n@@ -3,11 +3,11 @@\n import time\n from datetime import datetime, timedelta\n \n-RETRY_DELAYS = [1, 5, 15, 60]  # seconds\n+RETRY_DELAYS = [1, 5, 15, 60]  # seconds\n \n def schedule_task(task_fn, max_retries: int = 3):\n     for attempt in range(max_retries):\n         try:\n             return task_fn()\n-        except Exception as e:\n+        except Exception:\n             delay = RETRY_DELAYS[attempt]\n             time.sleep(delay)",
+    "commit_message": "Clean up unused variable in scheduler",
+    "pr_description": "Removed unused exception variable 'e' to satisfy linter.",
+    "file_path": "tasks/scheduler.py",
+    "file_context": "import time\nfrom datetime import datetime, timedelta\n\nRETRY_DELAYS = [1, 5, 15, 60]  # seconds\n\ndef schedule_task(task_fn, max_retries: int = 3):\n    for attempt in range(max_retries):\n        try:\n            return task_fn()\n        except Exception:\n            delay = RETRY_DELAYS[attempt]\n            time.sleep(delay)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 13,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "IndexError risk: RETRY_DELAYS has 4 elements (indices 0-3) but max_retries defaults to 3 (attempts 0-2). However if max_retries is set to > 4, RETRY_DELAYS[attempt] will raise IndexError. No bounds check on the delay lookup.",
+        "explanation": "While the default max_retries=3 is safe, the function accepts any int. If called with max_retries=10, attempts 4+ will crash with IndexError. Should use min(attempt, len(RETRY_DELAYS)-1) or similar."
+      },
+      {
+        "line_number": 13,
+        "severity": "minor",
+        "issue_type": "style",
+        "description": "Exception is caught but no logging occurs. The exception variable was removed, but even before that, the error was being silently swallowed. Add logging to aid debugging.",
+        "explanation": "Silent exception handling makes production debugging extremely difficult. At minimum, log the exception type and message before retrying."
+      }
+    ]
+  },
+  {
+    "id": "easy_010",
+    "difficulty": "easy",
+    "diff_text": "--- a/cache.py\n+++ b/cache.py\n@@ -8,12 +8,10 @@\n class SimpleCache:\n     def __init__(self, ttl: int = 300):\n         self._cache = {}\n-        self._timestamps = {}\n         self._ttl = ttl\n \n     def get(self, key: str):\n-        if key in self._cache and not self._is_expired(key):\n+        if key in self._cache:\n             return self._cache[key]\n         return None\n \n     def set(self, key: str, value):\n         self._cache[key] = value\n-        self._timestamps[key] = time.time()",
+    "commit_message": "Simplify cache implementation",
+    "pr_description": "Removed timestamp tracking to reduce complexity. TTL isn't really needed for our use case.",
+    "file_path": "cache.py",
+    "file_context": "import time\n\nclass SimpleCache:\n    def __init__(self, ttl: int = 300):\n        self._cache = {}\n        self._ttl = ttl\n\n    def get(self, key: str):\n        if key in self._cache:\n            return self._cache[key]\n        return None\n\n    def set(self, key: str, value):\n        self._cache[key] = value",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 10,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed TTL expiration logic but kept the ttl parameter in __init__. The cache now never expires entries, which will cause unbounded memory growth in long-running processes.",
+        "explanation": "The constructor still accepts a ttl parameter (suggesting TTL is intended), but entries are never expired. This is a memory leak — the cache grows indefinitely. Either remove the ttl parameter entirely or keep the expiration logic."
+      }
+    ]
+  }
+]
