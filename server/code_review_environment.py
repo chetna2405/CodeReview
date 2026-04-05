@@ -10,21 +10,21 @@ Implements the OpenEnv Environment interface:
 import json
 import os
 import random
+import sys
 from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
+from openenv.core.env_server import Environment
 from openenv.core.env_server.types import Action, Observation, State
-from openenv.core.env_server.environment import Environment
 
-# Use relative imports when running as a package, fallback to direct imports
+# Handle imports for both package and standalone modes
 try:
-    from models import ReviewAction, DiffObservation, ReviewState, DiffScenario
+    from models import ReviewAction, DiffObservation, ReviewState
     from server.grader import grade_episode, compute_partial_reward
 except ImportError:
-    import sys
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from models import ReviewAction, DiffObservation, ReviewState, DiffScenario
+    from models import ReviewAction, DiffObservation, ReviewState
     from server.grader import grade_episode, compute_partial_reward
 
 
@@ -66,7 +66,6 @@ def _load_scenarios(data_dir: Path) -> list[dict]:
     return scenarios
 
 
-# Pre-load all scenarios at module level
 _SCENARIOS_CACHE: dict[str, list[dict]] = {}
 
 
@@ -83,7 +82,7 @@ def _get_scenarios(task_id: str) -> list[dict]:
 
 # ─── Environment ──────────────────────────────────────────────────────────────
 
-class CodeReviewEnvironment(Environment):
+class CodeReviewEnvironment(Environment[ReviewAction, DiffObservation, ReviewState]):
     """
     OpenEnv environment for AI code review benchmarking.
 
@@ -93,7 +92,7 @@ class CodeReviewEnvironment(Environment):
 
     def __init__(self):
         super().__init__()
-        self._state = ReviewState()
+        self._state = ReviewState(episode_id=str(uuid4()), step_count=0)
         self._current_scenario: Optional[dict] = None
         self._agent_comments: list[dict] = []
         self._gold_annotations: list[dict] = []
@@ -107,20 +106,10 @@ class CodeReviewEnvironment(Environment):
         task_id: Optional[str] = None,
         scenario_id: Optional[str] = None,
         **kwargs: Any,
-    ) -> Observation:
+    ) -> DiffObservation:
         """
         Reset the environment and start a new code review episode.
-
-        Args:
-            seed: Random seed for scenario selection
-            episode_id: Optional episode ID (auto-generated if not provided)
-            task_id: Which task to run (simple_review, logic_review, security_review)
-            scenario_id: Specific scenario ID to load (random if not provided)
-
-        Returns:
-            DiffObservation with the PR diff and context
         """
-        # Default to simple_review if no task specified
         if task_id is None:
             task_id = kwargs.get("task_id", "simple_review")
 
@@ -141,7 +130,6 @@ class CodeReviewEnvironment(Environment):
                 metadata={"error": f"No scenarios found for task {task_id}"},
             )
 
-        # Select scenario
         if seed is not None:
             random.seed(seed)
 
@@ -157,6 +145,7 @@ class CodeReviewEnvironment(Environment):
         self._agent_comments = []
         self._gold_annotations = scenario.get("annotations", [])
         self._final_verdict = ""
+        self._episode_results = {}
 
         self._state = ReviewState(
             episode_id=episode_id or str(uuid4()),
@@ -192,20 +181,13 @@ class CodeReviewEnvironment(Environment):
 
     def step(
         self,
-        action: Action,
+        action: ReviewAction,
         timeout_s: Optional[float] = None,
         **kwargs: Any,
-    ) -> Observation:
+    ) -> DiffObservation:
         """
         Process a review action.
-
-        Args:
-            action: ReviewAction (add_comment, approve, or request_changes)
-
-        Returns:
-            DiffObservation with updated state and reward signal
         """
-        # Check if episode is already done
         if self._state.is_done:
             return DiffObservation(
                 done=True,
@@ -213,10 +195,9 @@ class CodeReviewEnvironment(Environment):
                 metadata={"error": "Episode is already complete. Call reset() to start a new one."},
             )
 
-        # Increment step count
-        self._state.step_count += 1
+        self._state = self._state.model_copy(update={"step_count": self._state.step_count + 1})
 
-        # Parse action — handle both ReviewAction and dict-like actions
+        # Parse action — handle both ReviewAction and dict-like inputs
         if isinstance(action, ReviewAction):
             action_type = action.action_type
             line_number = action.line_number
@@ -229,55 +210,27 @@ class CodeReviewEnvironment(Environment):
             severity = action.get("severity")
             message = action.get("message")
             reason = action.get("reason")
-        elif hasattr(action, "arguments"):
-            # MCP-style CallToolAction
-            args = action.arguments if isinstance(action.arguments, dict) else {}
-            action_type = args.get("action_type", "add_comment")
-            line_number = args.get("line_number")
-            severity = args.get("severity")
-            message = args.get("message")
-            reason = args.get("reason")
         else:
-            return DiffObservation(
-                done=False,
-                reward=0.0,
-                metadata={"error": f"Unknown action type: {type(action).__name__}"},
-            )
+            # Try to access attributes generically
+            action_type = getattr(action, "action_type", "add_comment")
+            line_number = getattr(action, "line_number", None)
+            severity = getattr(action, "severity", None)
+            message = getattr(action, "message", None)
+            reason = getattr(action, "reason", None)
 
-        # Validate action type
         if action_type not in ("add_comment", "approve", "request_changes"):
-            return DiffObservation(
-                diff_text=self._current_scenario.get("diff_text", "") if self._current_scenario else "",
-                task_id=self._state.task_id,
-                step_num=self._state.step_count,
-                max_steps=self._state.max_steps,
-                existing_comments=list(self._agent_comments),
-                done=False,
+            return self._make_obs(
                 reward=0.0,
-                metadata={
-                    "error": f"Invalid action_type: {action_type}. Must be add_comment, approve, or request_changes.",
-                    "validation_error": True,
-                },
+                metadata={"error": f"Invalid action_type: {action_type}. Must be add_comment, approve, or request_changes."},
             )
 
-        # Process action
         reward = 0.0
 
         if action_type == "add_comment":
-            # Validate required fields
             if line_number is None or message is None:
-                return DiffObservation(
-                    diff_text=self._current_scenario.get("diff_text", "") if self._current_scenario else "",
-                    task_id=self._state.task_id,
-                    step_num=self._state.step_count,
-                    max_steps=self._state.max_steps,
-                    existing_comments=list(self._agent_comments),
-                    done=False,
+                return self._make_obs(
                     reward=0.0,
-                    metadata={
-                        "error": "add_comment requires line_number and message fields.",
-                        "validation_error": True,
-                    },
+                    metadata={"error": "add_comment requires line_number and message fields."},
                 )
 
             comment = {
@@ -287,15 +240,15 @@ class CodeReviewEnvironment(Environment):
                 "step": self._state.step_count,
             }
             self._agent_comments.append(comment)
-            self._state.comments_made += 1
+            self._state = self._state.model_copy(update={
+                "comments_made": self._state.comments_made + 1
+            })
 
-            # Compute partial reward (how many gold issues found so far)
             reward = compute_partial_reward(self._agent_comments, self._gold_annotations)
 
         elif action_type in ("approve", "request_changes"):
-            # Terminal actions — end episode and run grader
             self._final_verdict = action_type
-            self._state.is_done = True
+            self._state = self._state.model_copy(update={"is_done": True})
 
             grader_result = grade_episode(
                 agent_comments=self._agent_comments,
@@ -303,10 +256,11 @@ class CodeReviewEnvironment(Environment):
                 final_verdict=action_type,
             )
 
-            self._state.final_score = grader_result.composite_score
-            self._state.issues_found = grader_result.issues_found
+            self._state = self._state.model_copy(update={
+                "final_score": grader_result.composite_score,
+                "issues_found": grader_result.issues_found,
+            })
             reward = grader_result.composite_score
-
             self._episode_results = {
                 "composite_score": grader_result.composite_score,
                 "f1_score": grader_result.f1_score,
@@ -323,15 +277,16 @@ class CodeReviewEnvironment(Environment):
         # Check if max steps reached
         is_done = self._state.is_done or self._state.step_count >= self._state.max_steps
         if is_done and not self._state.is_done:
-            # Max steps reached without explicit verdict — auto-grade
-            self._state.is_done = True
+            self._state = self._state.model_copy(update={"is_done": True})
             grader_result = grade_episode(
                 agent_comments=self._agent_comments,
                 gold_annotations=self._gold_annotations,
                 final_verdict="timeout",
             )
-            self._state.final_score = grader_result.composite_score
-            self._state.issues_found = grader_result.issues_found
+            self._state = self._state.model_copy(update={
+                "final_score": grader_result.composite_score,
+                "issues_found": grader_result.issues_found,
+            })
             reward = grader_result.composite_score
             self._episode_results = {
                 "composite_score": grader_result.composite_score,
@@ -346,6 +301,15 @@ class CodeReviewEnvironment(Environment):
                 "verdict": "timeout",
             }
 
+        return self._make_obs(reward=reward, done=is_done)
+
+    def _make_obs(self, reward: float = 0.0, done: bool = False, metadata: dict = None) -> DiffObservation:
+        """Build a DiffObservation from current state."""
+        meta = metadata or {}
+        meta["episode_id"] = self._state.episode_id
+        if self._state.is_done and self._episode_results:
+            meta["episode_results"] = self._episode_results
+
         return DiffObservation(
             diff_text=self._current_scenario.get("diff_text", "") if self._current_scenario else "",
             commit_message=self._current_scenario.get("commit_message", "") if self._current_scenario else "",
@@ -356,17 +320,13 @@ class CodeReviewEnvironment(Environment):
             step_num=self._state.step_count,
             max_steps=self._state.max_steps,
             existing_comments=list(self._agent_comments),
-            done=is_done,
+            done=done or self._state.is_done,
             reward=reward,
-            metadata={
-                "episode_id": self._state.episode_id,
-                "action_processed": action_type,
-                **({"episode_results": self._episode_results} if is_done else {}),
-            },
+            metadata=meta,
         )
 
     @property
-    def state(self) -> State:
+    def state(self) -> ReviewState:
         """Return current episode state."""
         return self._state
 

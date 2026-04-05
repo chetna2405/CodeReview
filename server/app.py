@@ -1,14 +1,8 @@
 """
 FastAPI application for CodeReviewEnv.
 
-Exposes the CodeReviewEnvironment over HTTP endpoints:
-  - POST /reset          — Start a new episode
-  - POST /step           — Execute a review action
-  - GET  /state          — Get current episode state
-  - GET  /tasks          — List available tasks
-  - GET  /grader         — Get grader results for completed episode
-  - POST /baseline       — Run baseline inference (requires HF token)
-  - GET  /health         — Health check
+Uses OpenEnv's create_app helper for standard HTTP/WebSocket endpoints,
+plus custom REST routes for tasks, grader, and baseline inference.
 """
 
 import os
@@ -17,20 +11,302 @@ import json
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Optional, Any
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+from typing import Optional
 
 # Handle imports for both package and standalone modes
 try:
+    from openenv.core.env_server.http_server import create_app
     from server.code_review_environment import CodeReviewEnvironment
-    from models import ReviewAction, DiffObservation, ReviewState
+    from models import ReviewAction, DiffObservation
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from openenv.core.env_server.http_server import create_app
     from server.code_review_environment import CodeReviewEnvironment
-    from models import ReviewAction, DiffObservation, ReviewState
+    from models import ReviewAction, DiffObservation
 
 
-# ─── Pydantic request/response models for FastAPI ────────────────────────────
+# ─── Create app using OpenEnv's create_app ────────────────────────────────────
+
+app = create_app(
+    CodeReviewEnvironment,
+    ReviewAction,
+    DiffObservation,
+    env_name="code_review_env",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ─── Additional custom endpoints ─────────────────────────────────────────────
+
+# We need a standalone instance for custom endpoints
+_env_instance = CodeReviewEnvironment()
+
+
+LANDING_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeReviewEnv</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #0a0a1a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .container { max-width: 900px; width: 100%; padding: 40px 24px; }
+  .hero {
+    text-align: center;
+    padding: 60px 0 40px;
+  }
+  .hero h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #818cf8, #6ee7b7);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .hero .badge {
+    display: inline-block;
+    background: rgba(110, 231, 183, 0.15);
+    color: #6ee7b7;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    margin-bottom: 16px;
+    border: 1px solid rgba(110, 231, 183, 0.3);
+  }
+  .hero p {
+    color: #94a3b8;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 32px 0;
+  }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 24px;
+    transition: all 0.2s;
+  }
+  .card:hover {
+    border-color: rgba(129, 140, 248, 0.4);
+    background: rgba(129, 140, 248, 0.06);
+    transform: translateY(-2px);
+  }
+  .card .difficulty {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .card .difficulty.easy { color: #6ee7b7; }
+  .card .difficulty.medium { color: #fbbf24; }
+  .card .difficulty.hard { color: #f87171; }
+  .card h3 { font-size: 1.1rem; margin-bottom: 6px; color: #f1f5f9; }
+  .card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.5; }
+  .card .scenarios {
+    margin-top: 12px;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+  .section-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 40px 0 16px;
+    color: #f1f5f9;
+  }
+  .endpoints {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .endpoint {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    transition: background 0.15s;
+  }
+  .endpoint:last-child { border-bottom: none; }
+  .endpoint:hover { background: rgba(255,255,255,0.03); }
+  .method {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 4px;
+    min-width: 48px;
+    text-align: center;
+    font-family: 'SF Mono', monospace;
+  }
+  .method.get { background: rgba(110,231,183,0.15); color: #6ee7b7; }
+  .method.post { background: rgba(129,140,248,0.15); color: #818cf8; }
+  .path {
+    font-family: 'SF Mono', Consolas, monospace;
+    font-size: 0.9rem;
+    color: #e2e8f0;
+    flex: 1;
+  }
+  .desc { font-size: 0.8rem; color: #64748b; }
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 32px 0;
+    padding: 16px 20px;
+    background: rgba(110, 231, 183, 0.08);
+    border: 1px solid rgba(110, 231, 183, 0.2);
+    border-radius: 10px;
+  }
+  .pulse {
+    width: 8px; height: 8px;
+    background: #6ee7b7;
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(110,231,183,0.4); }
+    50% { opacity: 0.8; box-shadow: 0 0 0 8px rgba(110,231,183,0); }
+  }
+  .status-bar span { font-size: 0.85rem; color: #6ee7b7; font-weight: 500; }
+  .footer {
+    text-align: center;
+    padding: 40px 0;
+    color: #475569;
+    font-size: 0.8rem;
+  }
+  .footer a { color: #818cf8; text-decoration: none; }
+  a { color: #818cf8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="hero">
+    <div class="badge">OPENENV ENVIRONMENT</div>
+    <h1>CodeReviewEnv</h1>
+    <p>AI code review benchmarking environment. Agents review PR diffs, flag bugs, classify severity, and produce review comments &mdash; graded against expert annotations.</p>
+  </div>
+
+  <div class="status-bar">
+    <div class="pulse"></div>
+    <span>Environment is live and accepting connections</span>
+  </div>
+
+  <h2 class="section-title">Available Tasks</h2>
+  <div class="cards">
+    <div class="card">
+      <div class="difficulty easy">Easy</div>
+      <h3>simple_review</h3>
+      <p>Identify obvious bugs in short Python diffs: off-by-one errors, missing null checks, typos</p>
+      <div class="scenarios">10 scenarios &middot; 10 max steps</div>
+    </div>
+    <div class="card">
+      <div class="difficulty medium">Medium</div>
+      <h3>logic_review</h3>
+      <p>Detect subtle logic errors in realistic PRs: race conditions, edge-case misses, wrong operators</p>
+      <div class="scenarios">10 scenarios &middot; 15 max steps</div>
+    </div>
+    <div class="card">
+      <div class="difficulty hard">Hard</div>
+      <h3>security_review</h3>
+      <p>Find security vulnerabilities (OWASP Top-10): SQL injection, RCE, auth bypass, XSS</p>
+      <div class="scenarios">10 scenarios &middot; 20 max steps</div>
+    </div>
+  </div>
+
+  <h2 class="section-title">API Endpoints</h2>
+  <div class="endpoints">
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path"><a href="/health">/health</a></span>
+      <span class="desc">Health check</span>
+    </div>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path"><a href="/tasks">/tasks</a></span>
+      <span class="desc">List available tasks</span>
+    </div>
+    <div class="endpoint">
+      <span class="method post">POST</span>
+      <span class="path">/api/reset</span>
+      <span class="desc">Start a new episode</span>
+    </div>
+    <div class="endpoint">
+      <span class="method post">POST</span>
+      <span class="path">/api/step</span>
+      <span class="desc">Execute a review action</span>
+    </div>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path"><a href="/api/state">/api/state</a></span>
+      <span class="desc">Get current episode state</span>
+    </div>
+    <div class="endpoint">
+      <span class="method get">GET</span>
+      <span class="path"><a href="/grader">/grader</a></span>
+      <span class="desc">Grader results for completed episode</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    Built for the <strong>Scaler &times; Meta &times; PyTorch Hackathon 2026</strong><br>
+    Powered by <a href="https://github.com/meta-pytorch/OpenEnv">OpenEnv</a>
+  </div>
+</div>
+</body>
+</html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+async def landing_page():
+    """Serve the CodeReviewEnv landing page."""
+    return LANDING_PAGE
+
+
+@app.get("/tasks")
+async def get_tasks():
+    """List available tasks with metadata."""
+    return {"tasks": _env_instance.get_tasks()}
+
+
+@app.get("/grader")
+async def get_grader_results():
+    """Get grader results for the current completed episode."""
+    results = _env_instance.get_episode_results()
+    if "error" in results:
+        raise HTTPException(status_code=400, detail=results["error"])
+    return results
+
+
+# ─── Convenience REST endpoints (in addition to OpenEnv WebSocket) ────────────
 
 class ResetRequest(BaseModel):
     task_id: str = "simple_review"
@@ -45,109 +321,22 @@ class StepRequest(BaseModel):
     message: Optional[str] = None
     reason: Optional[str] = None
 
-class ObservationResponse(BaseModel):
-    diff_text: str = ""
-    commit_message: str = ""
-    pr_description: str = ""
-    file_path: str = ""
-    file_context: str = ""
-    task_id: str = ""
-    step_num: int = 0
-    max_steps: int = 10
-    existing_comments: list = []
-    done: bool = False
-    reward: float = 0.0
-    metadata: dict = {}
 
-class StateResponse(BaseModel):
-    episode_id: str = ""
-    step_count: int = 0
-    task_id: str = ""
-    scenario_id: str = ""
-    comments_made: int = 0
-    issues_found: int = 0
-    max_steps: int = 10
-    is_done: bool = False
-    final_score: Optional[float] = None
-
-
-# ─── App setup ────────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="CodeReviewEnv",
-    description="OpenEnv environment for AI code review benchmarking",
-    version="1.0.0",
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Single environment instance per server
-env = CodeReviewEnvironment()
-
-
-# ─── Endpoints ────────────────────────────────────────────────────────────────
-
-@app.get("/health")
-async def health():
-    """Health check endpoint."""
-    return {"status": "healthy", "environment": "CodeReviewEnv", "version": "1.0.0"}
-
-
-@app.get("/tasks")
-async def get_tasks():
-    """List available tasks with metadata."""
-    return {"tasks": env.get_tasks()}
-
-
-@app.post("/reset", response_model=ObservationResponse)
-async def reset(req: ResetRequest):
-    """
-    Start a new code review episode.
-
-    Pass task_id to select difficulty:
-    - simple_review (easy): obvious bugs
-    - logic_review (medium): subtle logic errors
-    - security_review (hard): security vulnerabilities
-    """
-    obs = env.reset(
+@app.post("/api/reset")
+async def rest_reset(req: ResetRequest):
+    """REST endpoint to start a new episode (alternative to WebSocket)."""
+    obs = _env_instance.reset(
         task_id=req.task_id,
         scenario_id=req.scenario_id,
         seed=req.seed,
         episode_id=req.episode_id,
     )
-
-    return ObservationResponse(
-        diff_text=obs.diff_text,
-        commit_message=obs.commit_message,
-        pr_description=obs.pr_description,
-        file_path=obs.file_path,
-        file_context=obs.file_context,
-        task_id=obs.task_id,
-        step_num=obs.step_num,
-        max_steps=obs.max_steps,
-        existing_comments=obs.existing_comments,
-        done=obs.done,
-        reward=obs.reward,
-        metadata=obs.metadata,
-    )
+    return obs.model_dump()
 
 
-@app.post("/step", response_model=ObservationResponse)
-async def step(req: StepRequest):
-    """
-    Execute a review action.
-
-    Action types:
-    - add_comment: Flag a line with severity and message
-    - approve: Approve the PR (ends episode)
-    - request_changes: Request changes (ends episode)
-    """
+@app.post("/api/step")
+async def rest_step(req: StepRequest):
+    """REST endpoint to execute an action (alternative to WebSocket)."""
     action = ReviewAction(
         action_type=req.action_type,
         line_number=req.line_number,
@@ -155,145 +344,14 @@ async def step(req: StepRequest):
         message=req.message,
         reason=req.reason,
     )
-
-    obs = env.step(action)
-
-    return ObservationResponse(
-        diff_text=obs.diff_text,
-        commit_message=obs.commit_message,
-        pr_description=obs.pr_description,
-        file_path=obs.file_path,
-        file_context=obs.file_context,
-        task_id=obs.task_id,
-        step_num=obs.step_num,
-        max_steps=obs.max_steps,
-        existing_comments=obs.existing_comments,
-        done=obs.done,
-        reward=obs.reward,
-        metadata=obs.metadata,
-    )
+    obs = _env_instance.step(action)
+    return obs.model_dump()
 
 
-@app.get("/state", response_model=StateResponse)
-async def get_state():
-    """Get current episode state."""
-    s = env.state
-    return StateResponse(
-        episode_id=s.episode_id,
-        step_count=s.step_count,
-        task_id=s.task_id,
-        scenario_id=s.scenario_id,
-        comments_made=s.comments_made,
-        issues_found=s.issues_found,
-        max_steps=s.max_steps,
-        is_done=s.is_done,
-        final_score=s.final_score,
-    )
-
-
-@app.get("/grader")
-async def get_grader_results():
-    """Get grader results for the current completed episode."""
-    results = env.get_episode_results()
-    if "error" in results:
-        raise HTTPException(status_code=400, detail=results["error"])
-    return results
-
-
-@app.post("/baseline")
-async def run_baseline():
-    """
-    Run baseline inference using HuggingFace Inference API.
-
-    Requires HF_TOKEN environment variable.
-    Returns baseline scores for all 3 tasks.
-    """
-    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
-
-    if not hf_token:
-        raise HTTPException(
-            status_code=400,
-            detail="HF_TOKEN environment variable required for baseline inference."
-        )
-
-    try:
-        from huggingface_hub import InferenceClient
-
-        client = InferenceClient(
-            model="meta-llama/Llama-3.1-8B-Instruct",
-            token=hf_token,
-        )
-
-        baseline_scores = {}
-
-        for task_id in ["simple_review", "logic_review", "security_review"]:
-            obs = env.reset(task_id=task_id, seed=42)
-
-            # Build prompt for the LLM
-            prompt = f"""You are an expert code reviewer. Review the following PR diff and identify all bugs, issues, and potential problems.
-
-## PR Description
-{obs.pr_description}
-
-## Commit Message
-{obs.commit_message}
-
-## Diff
-```
-{obs.diff_text}
-```
-
-## File Context
-```python
-{obs.file_context}
-```
-
-For each issue found, respond in JSON format:
-[
-  {{"line_number": <int>, "severity": "<critical|major|minor|nit>", "message": "<description of the issue>"}}
-]
-
-Only output the JSON array, nothing else."""
-
-            response = client.text_generation(
-                prompt,
-                max_new_tokens=1024,
-                temperature=0.01,
-            )
-
-            # Parse LLM response into actions
-            try:
-                # Try to extract JSON from response
-                text = response.strip()
-                if text.startswith("```"):
-                    text = text.split("```")[1]
-                    if text.startswith("json"):
-                        text = text[4:]
-                comments = json.loads(text)
-
-                if isinstance(comments, list):
-                    for comment in comments:
-                        action = ReviewAction(
-                            action_type="add_comment",
-                            line_number=comment.get("line_number"),
-                            severity=comment.get("severity", "major"),
-                            message=comment.get("message", ""),
-                        )
-                        env.step(action)
-            except (json.JSONDecodeError, Exception):
-                pass
-
-            # End episode
-            final_obs = env.step(ReviewAction(action_type="request_changes", reason="Issues found"))
-            results = env.get_episode_results()
-            baseline_scores[task_id] = round(results.get("composite_score", 0.0), 4)
-
-        return {"baseline_scores": baseline_scores, "model": "meta-llama/Llama-3.1-8B-Instruct"}
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="huggingface_hub package not installed")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Baseline inference failed: {str(e)}")
+@app.get("/api/state")
+async def rest_state():
+    """REST endpoint to get current state."""
+    return _env_instance.state.model_dump()
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────

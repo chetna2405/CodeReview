@@ -1,19 +1,18 @@
 """
 Typed data models for CodeReviewEnv.
 
-Defines Action, Observation, and State dataclasses following
-the OpenEnv specification using Python dataclasses.
+Defines Action, Observation, and State as Pydantic models extending
+the OpenEnv base types.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
+from pydantic import BaseModel, Field
 
 from openenv.core.env_server.types import Action, Observation, State
 
 
 # ─── Action ───────────────────────────────────────────────────────────────────
 
-@dataclass
 class ReviewAction(Action):
     """
     An action the agent takes during a code review episode.
@@ -23,11 +22,11 @@ class ReviewAction(Action):
         - approve: Approve the PR (ends the episode).
         - request_changes: Request changes with a reason (ends the episode).
     """
-    action_type: Literal["add_comment", "approve", "request_changes"] = "add_comment"
+    action_type: str = "add_comment"
 
     # For add_comment actions
     line_number: Optional[int] = None
-    severity: Optional[Literal["critical", "major", "minor", "nit"]] = None
+    severity: Optional[str] = None
     message: Optional[str] = None
 
     # For request_changes actions
@@ -36,7 +35,6 @@ class ReviewAction(Action):
 
 # ─── Observation ──────────────────────────────────────────────────────────────
 
-@dataclass
 class DiffObservation(Observation):
     """
     What the agent sees at each step of a code review episode.
@@ -56,23 +54,15 @@ class DiffObservation(Observation):
     max_steps: int = 10
 
     # Agent's prior actions this episode
-    existing_comments: list = field(default_factory=list)
-
-    # Episode signals
-    done: bool = False
-    reward: float = 0.0
-    metadata: dict = field(default_factory=dict)
+    existing_comments: list = Field(default_factory=list)
 
 
 # ─── State ────────────────────────────────────────────────────────────────────
 
-@dataclass
 class ReviewState(State):
     """
     Internal episode state tracked by the environment.
     """
-    episode_id: str = ""
-    step_count: int = 0
     task_id: str = ""
     scenario_id: str = ""
     comments_made: int = 0
@@ -82,14 +72,10 @@ class ReviewState(State):
     final_score: Optional[float] = None
 
 
-# ─── Gold Annotation (internal, not exposed to agent) ────────────────────────
+# ─── Internal models (not exposed to agent) ──────────────────────────────────
 
-@dataclass
-class GoldAnnotation:
-    """
-    Expert annotation for a single issue in a diff scenario.
-    Used by the grader to evaluate agent performance.
-    """
+class GoldAnnotation(BaseModel):
+    """Expert annotation for a single issue in a diff scenario."""
     line_number: int = 0
     severity: str = "major"
     issue_type: str = "bug"
@@ -97,12 +83,8 @@ class GoldAnnotation:
     explanation: str = ""
 
 
-@dataclass
-class DiffScenario:
-    """
-    A complete diff scenario with metadata and gold annotations.
-    Loaded from JSON files in the data/ directory.
-    """
+class DiffScenario(BaseModel):
+    """A complete diff scenario with metadata and gold annotations."""
     id: str = ""
     difficulty: str = "easy"
     diff_text: str = ""
@@ -111,7 +93,7 @@ class DiffScenario:
     file_path: str = ""
     file_context: str = ""
     language: str = "python"
-    annotations: list = field(default_factory=list)  # List[GoldAnnotation]
+    annotations: list = Field(default_factory=list)
 
     def get_annotations(self) -> list:
         """Parse annotations into GoldAnnotation objects."""
