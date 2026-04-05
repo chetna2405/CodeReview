@@ -137,6 +137,20 @@ Run baseline inference using HuggingFace Inference API (requires `HF_TOKEN`).
 
 ---
 
+## 📊 Baseline Results (Qwen2.5-72B)
+
+Evaluated across 30 scenarios (10 per task) using the Hugging Face Inference API.
+
+| Task ID | Difficulty | Composite Score |
+|---------|------------|-----------------|
+| `simple_review` | Easy | **0.6680** |
+| `logic_review` | Medium | **0.5239** |
+| `security_review` | Hard | **0.5562** |
+
+**Average Baseline Score: 0.5827**
+
+---
+
 ## 🏃 Running the Baseline
 
 ```bash
