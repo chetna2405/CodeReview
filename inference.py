@@ -21,7 +21,7 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-API_KEY       = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+HF_TOKEN      = os.getenv("HF_TOKEN")
 API_BASE_URL  = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME    = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 ENV_URL       = os.getenv("ENV_URL", "https://chetna1910-codereviewenv.hf.space")
@@ -252,10 +252,10 @@ def run_task(client: OpenAI, task_id: str) -> float:
 # ── Entry point ─────────────────────────────────────────────────────────────
 
 def main() -> None:
-    if not API_KEY:
+    if not HF_TOKEN:
         print("[DEBUG] WARNING: HF_TOKEN not set — LLM calls will fail", flush=True)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "dummy")
 
     all_scores: dict = {}
     for task_id in TASKS:
