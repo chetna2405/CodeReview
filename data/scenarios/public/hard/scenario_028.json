@@ -1,0 +1,37 @@
+{
+  "id": "scenario_028",
+  "source": {
+    "repo": "django/django",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/views/upload.py\n+++ b/views/upload.py\n@@ -12,10 +12,7 @@\n def upload_file(request):\n     f = request.FILES['file']\n-    name = os.path.basename(f.name)\n-    if not name.endswith(('.jpg','.png','.gif')):\n-        return HttpResponse(status=400)\n     dest = os.path.join(UPLOAD_DIR, f.name)\n     with open(dest, 'wb') as out:\n         out.write(f.read())",
+  "commit_message": "Simplify upload handler",
+  "pr_description": "Remove redundant validation.",
+  "file_path": "views/upload.py",
+  "file_context": "def upload_file(request):\n    f = request.FILES['file']\n    dest = os.path.join(UPLOAD_DIR, f.name)\n    with open(dest, 'wb') as out:\n        out.write(f.read())",
+  "gold_annotations": [
+    {
+      "line": 15,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Arbitrary file upload: type validation removed. Attacker can upload .php/.py shell.",
+      "reference": "OWASP A01:2021"
+    },
+    {
+      "line": 15,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Path traversal via f.name — user controls filename. Use secure_filename().",
+      "reference": "OWASP A01:2021"
+    },
+    {
+      "line": 17,
+      "type": "bug",
+      "severity": "major",
+      "issue": "f.read() loads entire file into memory. DoS via large file upload.",
+      "reference": ""
+    }
+  ]
+}

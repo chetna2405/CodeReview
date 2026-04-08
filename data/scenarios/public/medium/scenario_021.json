@@ -1,0 +1,23 @@
+{
+  "id": "scenario_021",
+  "source": {
+    "repo": "pallets/werkzeug",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/crypto.py\n+++ b/crypto.py\n@@ -4,6 +4,6 @@\n import hmac, hashlib\n def verify_token(token, stored):\n-    return hmac.compare_digest(token, stored)\n+    return token == stored",
+  "commit_message": "Simplify token comparison",
+  "pr_description": "Direct equality is simpler and equivalent.",
+  "file_path": "crypto.py",
+  "file_context": "import hmac, hashlib\ndef verify_token(token, stored):\n    return token == stored",
+  "gold_annotations": [
+    {
+      "line": 5,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Timing attack: == short-circuits on first mismatch. Use hmac.compare_digest() for constant-time comparison.",
+      "reference": "OWASP A02:2021"
+    }
+  ]
+}

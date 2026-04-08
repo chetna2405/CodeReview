@@ -1,0 +1,23 @@
+{
+  "id": "scenario_005",
+  "source": {
+    "repo": "apache/airflow",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/models/user.py\n+++ b/models/user.py\n@@ -4,4 +4,4 @@\n class User:\n     def __init__(self, name, email, age):\n         self.name = name\n-        self.email = email\n+        self.emal = email\n         self.age = age",
+  "commit_message": "Refactor User model",
+  "pr_description": "Minor model cleanup.",
+  "file_path": "models/user.py",
+  "file_context": "class User:\n    def __init__(self, name, email, age):\n        self.name = name\n        self.emal = email\n        self.age = age",
+  "gold_annotations": [
+    {
+      "line": 7,
+      "type": "bug",
+      "severity": "critical",
+      "issue": "Typo: self.emal should be self.email — breaks all code accessing user.email.",
+      "reference": ""
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "id": "scenario_cf_003",
+  "difficulty": "hard",
+  "cross_file": true,
+  "language": "python",
+  "diff_text": "--- a/models.py\n+++ b/models.py\n@@ -20,3 +20,3 @@\n class User:\n-    profile_url: Optional[str] = None\n+    profile_url: str\n--- a/serializer.py\n+++ b/serializer.py\n@@ -8,3 +8,3 @@\n def serialize_user(user):\n-    url = user.profile_url if user.profile_url else ''\n+    url = user.profile_url\n",
+  "commit_message": "Update User model nullability",
+  "pr_description": "Make profile_url required.",
+  "file_path": "models.py",
+  "file_context": "",
+  "repo_context": {
+    "models.py": "class User:\n    profile_url: str\n",
+    "serializer.py": "def serialize_user(user):\n    url = user.profile_url\n    return {'url': url.lower()}\n"
+  },
+  "gold_annotations": [
+    {
+      "line": 21,
+      "severity": "major",
+      "type": "bug",
+      "file": "models.py",
+      "causal_chain": {
+        "root_file": "models.py",
+        "downstream_file": "serializer.py",
+        "description": "Making field non-nullable means old data might be missing it, but serializer removes fallback causing AttributeError on .lower()."
+      }
+    },
+    {
+      "line": 9,
+      "severity": "major",
+      "type": "bug",
+      "file": "serializer.py",
+      "causal_chain": {
+        "root_file": "models.py",
+        "downstream_file": "serializer.py",
+        "description": "Making field non-nullable means old data might be missing it, but serializer removes fallback causing AttributeError on .lower()."
+      }
+    }
+  ]
+}

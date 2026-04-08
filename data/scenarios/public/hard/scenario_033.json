@@ -1,0 +1,23 @@
+{
+  "id": "scenario_033",
+  "source": {
+    "repo": "tiangolo/fastapi",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/auth/jwt.py\n+++ b/auth/jwt.py\n@@ -8,7 +8,7 @@\n import jwt\n def decode_token(token):\n-    return jwt.decode(token, SECRET, algorithms=['HS256'])\n+    return jwt.decode(token, options={'verify_signature': False})",
+  "commit_message": "Skip JWT verification in dev mode",
+  "pr_description": "Makes local development easier.",
+  "file_path": "auth/jwt.py",
+  "file_context": "import jwt\ndef decode_token(token):\n    return jwt.decode(token, options={'verify_signature': False})",
+  "gold_annotations": [
+    {
+      "line": 9,
+      "type": "security",
+      "severity": "critical",
+      "issue": "JWT signature verification disabled — any token accepted. Complete authentication bypass.",
+      "reference": "OWASP A07:2021"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "scenario_025",
+  "source": {
+    "repo": "redis/redis-py",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/pubsub.py\n+++ b/pubsub.py\n@@ -14,7 +14,5 @@\n class EventBus:\n     def publish(self, channel, data):\n-        payload = json.dumps(data)\n-        if len(payload) > MAX_SIZE:\n-            raise ValueError('Payload too large')\n+        payload = json.dumps(data)\n         self.redis.publish(channel, payload)",
+  "commit_message": "Remove payload size check",
+  "pr_description": "Redis handles large payloads fine.",
+  "file_path": "pubsub.py",
+  "file_context": "class EventBus:\n    def publish(self, channel, data):\n        payload = json.dumps(data)\n        self.redis.publish(channel, payload)",
+  "gold_annotations": [
+    {
+      "line": 17,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Unbounded payload allows memory exhaustion DoS. Redis pub/sub has practical size limits.",
+      "reference": ""
+    }
+  ]
+}

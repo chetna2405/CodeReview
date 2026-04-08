@@ -1,0 +1,23 @@
+{
+  "id": "scenario_017",
+  "source": {
+    "repo": "sqlalchemy/sqlalchemy",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/db/queries.py\n+++ b/db/queries.py\n@@ -5,6 +5,6 @@\n def search_users(name):\n-    query = 'SELECT * FROM users WHERE name = %s'\n-    return db.execute(query, (name,))\n+    query = f'SELECT * FROM users WHERE name = \"{name}\"'\n+    return db.execute(query)",
+  "commit_message": "Simplify search query construction",
+  "pr_description": "Use f-string for cleaner query.",
+  "file_path": "db/queries.py",
+  "file_context": "def search_users(name):\n    query = f'SELECT * FROM users WHERE name = \"{name}\"'\n    return db.execute(query)",
+  "gold_annotations": [
+    {
+      "line": 8,
+      "type": "security",
+      "severity": "critical",
+      "issue": "SQL injection: f-string interpolation replaced parameterized query. Input not sanitized.",
+      "reference": "OWASP A03:2021"
+    }
+  ]
+}

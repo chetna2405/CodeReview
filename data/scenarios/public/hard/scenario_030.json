@@ -1,0 +1,30 @@
+{
+  "id": "scenario_030",
+  "source": {
+    "repo": "encode/django-rest-framework",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/api/admin.py\n+++ b/api/admin.py\n@@ -10,7 +10,5 @@\n @require_POST\n def delete_user(request, user_id):\n-    if not request.user.is_staff:\n-        return HttpResponseForbidden()\n     user = User.objects.get(id=user_id)\n     user.delete()\n     return JsonResponse({'status': 'deleted'})",
+  "commit_message": "Remove stale permission check",
+  "pr_description": "Auth handled by middleware now.",
+  "file_path": "api/admin.py",
+  "file_context": "@require_POST\ndef delete_user(request, user_id):\n    user = User.objects.get(id=user_id)\n    user.delete()\n    return JsonResponse({'status': 'deleted'})",
+  "gold_annotations": [
+    {
+      "line": 13,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Authorization check removed — any authenticated user can delete any other user.",
+      "reference": "OWASP A01:2021"
+    },
+    {
+      "line": 14,
+      "type": "security",
+      "severity": "major",
+      "issue": "IDOR: user_id from URL not validated against ownership. Horizontal privilege escalation.",
+      "reference": "OWASP A01:2021"
+    }
+  ]
+}

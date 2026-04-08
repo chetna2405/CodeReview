@@ -1,0 +1,23 @@
+{
+  "id": "scenario_031",
+  "source": {
+    "repo": "yaml/pyyaml",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/loader.py\n+++ b/loader.py\n@@ -3,4 +3,4 @@\n import yaml\n def load_config(path):\n     with open(path) as f:\n-        return yaml.safe_load(f)\n+        return yaml.load(f)",
+  "commit_message": "Use yaml.load for full feature support",
+  "pr_description": "safe_load was too restrictive.",
+  "file_path": "loader.py",
+  "file_context": "import yaml\ndef load_config(path):\n    with open(path) as f:\n        return yaml.load(f)",
+  "gold_annotations": [
+    {
+      "line": 5,
+      "type": "security",
+      "severity": "critical",
+      "issue": "yaml.load() without Loader= allows arbitrary Python object deserialization. Use yaml.safe_load().",
+      "reference": "OWASP A08:2021"
+    }
+  ]
+}

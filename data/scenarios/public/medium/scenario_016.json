@@ -1,0 +1,30 @@
+{
+  "id": "scenario_016",
+  "source": {
+    "repo": "celery/celery",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/tasks/worker.py\n+++ b/tasks/worker.py\n@@ -12,9 +12,7 @@\n def process_batch(items):\n     results = []\n-    lock = threading.Lock()\n     threads = []\n     for item in items:\n-        def worker(i):\n-            with lock:\n-                results.append(process(i))\n+        def worker(i):\n+            results.append(process(i))\n         t = threading.Thread(target=worker, args=(item,))\n         threads.append(t)\n         t.start()\n     for t in threads:\n         t.join()\n     return results",
+  "commit_message": "Remove lock — process() is thread-safe",
+  "pr_description": "Lock was unnecessary overhead.",
+  "file_path": "tasks/worker.py",
+  "file_context": "import threading\ndef process_batch(items):\n    results = []\n    threads = []\n    for item in items:\n        def worker(i):\n            results.append(process(i))\n        t = threading.Thread(target=worker, args=(item,))\n        threads.append(t)\n        t.start()\n    for t in threads:\n        t.join()\n    return results",
+  "gold_annotations": [
+    {
+      "line": 19,
+      "type": "bug",
+      "severity": "critical",
+      "issue": "Race condition: list.append() is not atomic in all Python implementations. Lock was needed.",
+      "reference": ""
+    },
+    {
+      "line": 17,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Late binding closure bug: all thread workers capture same loop variable. Use args=(item,) correctly.",
+      "reference": ""
+    }
+  ]
+}

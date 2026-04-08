@@ -1,0 +1,30 @@
+{
+  "id": "scenario_h_004",
+  "source": {
+    "repo": "celery/celery",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/tasks.py\n+++ b/tasks.py\n@@ -6,6 +6,6 @@\n @app.task\n def send_email(user_id, template):\n     user = User.objects.get(id=user_id)\n-    body = Template(template).render(user=user)\n+    body = template.format(user=user)\n     mailer.send(user.email, body)",
+  "commit_message": "Use .format() instead of Template",
+  "pr_description": "Simpler string formatting.",
+  "file_path": "tasks.py",
+  "file_context": "@app.task\ndef send_email(user_id, template):\n    user = User.objects.get(id=user_id)\n    body = template.format(user=user)\n    mailer.send(user.email, body)",
+  "gold_annotations": [
+    {
+      "line": 9,
+      "type": "security",
+      "severity": "critical",
+      "issue": "str.format() with user-controlled template allows attribute access: {user.__class__.__bases__[0]...}",
+      "reference": "OWASP A03:2021"
+    },
+    {
+      "line": 8,
+      "type": "bug",
+      "severity": "minor",
+      "issue": "No error handling if user_id not found — DoesNotExist crashes the task.",
+      "reference": ""
+    }
+  ]
+}

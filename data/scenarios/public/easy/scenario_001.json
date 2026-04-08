@@ -1,0 +1,26 @@
+{
+  "id": "scenario_001",
+  "source": {
+    "repo": "psf/requests",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/utils.py\n+++ b/utils.py\n@@ -10,7 +10,7 @@\n def get_users(ids):\n     results = []\n-    for i in range(len(ids)):\n+    for i in range(len(ids) - 1):\n         results.append(db.fetch(ids[i]))\n     return results",
+  "commit_message": "Optimize user fetching loop",
+  "pr_description": "Minor loop optimization.",
+  "file_path": "utils.py",
+  "file_context": "def get_users(ids):\n    results = []\n    for i in range(len(ids) - 1):\n        results.append(db.fetch(ids[i]))\n    return results",
+  "repo_context": {
+    "utils.py": "import db\n\ndef get_users(ids):\n    results = []\n    for i in range(len(ids) - 1):\n        results.append(db.fetch(ids[i]))\n    return results\n"
+  },
+  "gold_annotations": [
+    {
+      "line": 13,
+      "type": "bug",
+      "severity": "critical",
+      "issue": "Off-by-one: range(len(ids)-1) skips the last element.",
+      "reference": ""
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "scenario_035",
+  "source": {
+    "repo": "cross-file-example",
+    "note": "synthetic cross-file dependency bug"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/services/user_service.py\n+++ b/services/user_service.py\n@@ -10,4 +10,4 @@\n def get_user_id(username: str) -> str:  # BUG: was int\n-    result = db.query('SELECT id FROM users WHERE name=%s', (username,))\n-    return result[0][0]  # returns int\n+    result = db.query(f'SELECT id FROM users WHERE name=\"{username}\"')\n+    return str(result[0][0])  # now returns str\n",
+  "commit_message": "Stringify user ID for JSON compat",
+  "pr_description": "JSON serialization needed string user IDs.",
+  "file_path": "services/user_service.py",
+  "file_context": "# services/user_service.py\ndef get_user_id(username: str) -> str:\n    result = db.query(f'SELECT id FROM users WHERE name=\"{username}\"')\n    return str(result[0][0])\n\n# profile_service.py (unchanged, but broken)\n# def load_profile(user_id: int):\n#     offset = user_id * PAGE_SIZE  # TypeError: str * int at runtime",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "security",
+      "severity": "critical",
+      "issue": "SQL injection: f-string query construction. Parameterized query removed.",
+      "reference": "OWASP A03:2021"
+    },
+    {
+      "line": 12,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Return type changed int→str breaks profile_service.py:load_profile() which multiplies user_id*PAGE_SIZE. Cross-file type contract violation.",
+      "reference": ""
+    }
+  ]
+}

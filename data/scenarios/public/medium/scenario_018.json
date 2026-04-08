@@ -1,0 +1,23 @@
+{
+  "id": "scenario_018",
+  "source": {
+    "repo": "encode/django-rest-framework",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/api/serializers.py\n+++ b/api/serializers.py\n@@ -15,8 +15,6 @@\n class UserSerializer(serializers.Serializer):\n     email = serializers.EmailField()\n-    def validate_email(self, value):\n-        if User.objects.filter(email=value).exists():\n-            raise serializers.ValidationError('Email already registered')\n-        return value\n     def create(self, data):\n         return User.objects.create(**data)",
+  "commit_message": "Remove duplicate email validation — handled by DB",
+  "pr_description": "DB unique constraint handles duplicates.",
+  "file_path": "api/serializers.py",
+  "file_context": "class UserSerializer(serializers.Serializer):\n    email = serializers.EmailField()\n    def create(self, data):\n        return User.objects.create(**data)",
+  "gold_annotations": [
+    {
+      "line": 18,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Removing app-level check means IntegrityError leaks to client as 500. Should return 400 with friendly message.",
+      "reference": ""
+    }
+  ]
+}

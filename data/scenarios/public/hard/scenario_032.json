@@ -1,0 +1,23 @@
+{
+  "id": "scenario_032",
+  "source": {
+    "repo": "requests/requests",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/client.py\n+++ b/client.py\n@@ -7,6 +7,6 @@\n def fetch(url):\n-    resp = requests.get(url, timeout=10, verify=True)\n+    resp = requests.get(url, timeout=10, verify=False)\n     resp.raise_for_status()\n     return resp.json()",
+  "commit_message": "Disable SSL verification for compatibility",
+  "pr_description": "Some internal services have self-signed certs.",
+  "file_path": "client.py",
+  "file_context": "def fetch(url):\n    resp = requests.get(url, timeout=10, verify=False)\n    resp.raise_for_status()\n    return resp.json()",
+  "gold_annotations": [
+    {
+      "line": 8,
+      "type": "security",
+      "severity": "critical",
+      "issue": "verify=False disables TLS certificate validation — MITM attacks undetectable. Use custom CA bundle instead.",
+      "reference": "OWASP A07:2021"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "scenario_010",
+  "source": {
+    "repo": "django/django",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/models/user.py\n+++ b/models/user.py\n@@ -8,4 +8,4 @@\n     def is_adult(self):\n-        return self.age >= 18\n+        return self.age > 18",
+  "commit_message": "Fix age validation",
+  "pr_description": "Corrects adult age check.",
+  "file_path": "models/user.py",
+  "file_context": "class User:\n    def is_adult(self):\n        return self.age > 18",
+  "gold_annotations": [
+    {
+      "line": 9,
+      "type": "bug",
+      "severity": "major",
+      "issue": "> 18 excludes exactly-18-year-olds who are legal adults. Should be >= 18.",
+      "reference": ""
+    }
+  ]
+}

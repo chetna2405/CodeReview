@@ -1,0 +1,30 @@
+{
+  "id": "scenario_008",
+  "source": {
+    "repo": "celery/celery",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/scheduler.py\n+++ b/scheduler.py\n@@ -6,8 +6,8 @@\n DELAYS = [1, 5, 15, 60]\n def run_with_retry(fn, max_retries=3):\n     for attempt in range(max_retries):\n         try:\n             return fn()\n-        except Exception as e:\n+        except Exception:\n             time.sleep(DELAYS[attempt])",
+  "commit_message": "Remove unused variable in retry loop",
+  "pr_description": "Removes linter warning for unused 'e'.",
+  "file_path": "scheduler.py",
+  "file_context": "DELAYS = [1, 5, 15, 60]\ndef run_with_retry(fn, max_retries=3):\n    for attempt in range(max_retries):\n        try:\n            return fn()\n        except Exception:\n            time.sleep(DELAYS[attempt])",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "bug",
+      "severity": "major",
+      "issue": "DELAYS[attempt] IndexError if max_retries > 4. No bounds check.",
+      "reference": ""
+    },
+    {
+      "line": 11,
+      "type": "style",
+      "severity": "minor",
+      "issue": "Exception swallowed silently. Add logging for debuggability.",
+      "reference": ""
+    }
+  ]
+}

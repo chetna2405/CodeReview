@@ -1,0 +1,30 @@
+{
+  "id": "scenario_h_007",
+  "source": {
+    "repo": "encode/starlette",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/middleware/csrf.py\n+++ b/middleware/csrf.py\n@@ -8,7 +8,5 @@\n class CSRFMiddleware:\n     async def __call__(self, scope, receive, send):\n         if scope['type'] == 'http':\n-            token = scope['headers'].get(b'x-csrf-token')\n-            if not token or token != self.secret:\n-                raise HTTPException(status_code=403)\n         await self.app(scope, receive, send)",
+  "commit_message": "Remove CSRF check — using SameSite cookies now",
+  "pr_description": "SameSite=Strict makes CSRF tokens redundant.",
+  "file_path": "middleware/csrf.py",
+  "file_context": "class CSRFMiddleware:\n    async def __call__(self, scope, receive, send):\n        if scope['type'] == 'http':\n            pass\n        await self.app(scope, receive, send)",
+  "gold_annotations": [
+    {
+      "line": 12,
+      "type": "security",
+      "severity": "critical",
+      "issue": "CSRF protection removed. SameSite=Strict alone is insufficient (browser support varies, subdomains not covered).",
+      "reference": "OWASP A01:2021"
+    },
+    {
+      "line": 12,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Middleware now does nothing but pass through — dead code. Remove entirely or fix.",
+      "reference": ""
+    }
+  ]
+}

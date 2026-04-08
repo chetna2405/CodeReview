@@ -1,0 +1,23 @@
+{
+  "id": "scenario_011",
+  "source": {
+    "repo": "encode/starlette",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/middleware.py\n+++ b/middleware.py\n@@ -10,6 +10,4 @@\n def rate_limit(request, limit=100):\n     key = request.client.host\n-    if not redis.exists(key):\n-        redis.setex(key, 60, 0)\n     count = redis.incr(key)\n     return count <= limit",
+  "commit_message": "Simplify rate limiter",
+  "pr_description": "Removes redundant init — incr creates key.",
+  "file_path": "middleware.py",
+  "file_context": "def rate_limit(request, limit=100):\n    key = request.client.host\n    count = redis.incr(key)\n    return count <= limit",
+  "gold_annotations": [
+    {
+      "line": 13,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Without setex, the key never expires. Rate limit window is permanent — one request bans the IP forever.",
+      "reference": ""
+    }
+  ]
+}

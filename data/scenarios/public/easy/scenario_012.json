@@ -1,0 +1,23 @@
+{
+  "id": "scenario_012",
+  "source": {
+    "repo": "pallets/flask",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/helpers.py\n+++ b/helpers.py\n@@ -1,6 +1,6 @@\n import hashlib\n def hash_password(pw):\n-    return hashlib.sha256(pw.encode()).hexdigest()\n+    return hashlib.md5(pw.encode()).hexdigest()",
+  "commit_message": "Switch to faster hash for passwords",
+  "pr_description": "MD5 is faster than SHA-256 for our use case.",
+  "file_path": "helpers.py",
+  "file_context": "import hashlib\ndef hash_password(pw):\n    return hashlib.md5(pw.encode()).hexdigest()",
+  "gold_annotations": [
+    {
+      "line": 3,
+      "type": "security",
+      "severity": "critical",
+      "issue": "MD5 is cryptographically broken for passwords. Use bcrypt, argon2, or at minimum SHA-256 with salt.",
+      "reference": "OWASP A02:2021"
+    }
+  ]
+}

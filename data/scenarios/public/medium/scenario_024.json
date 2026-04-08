@@ -1,0 +1,23 @@
+{
+  "id": "scenario_024",
+  "source": {
+    "repo": "marshmallow-code/marshmallow",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/schema.py\n+++ b/schema.py\n@@ -9,6 +9,4 @@\n class UserSchema(Schema):\n     name = fields.Str(required=True)\n     role = fields.Str()\n-    class Meta:\n-        unknown = EXCLUDE\n",
+  "commit_message": "Remove Meta class — not needed",
+  "pr_description": "Simplify schema, Meta was boilerplate.",
+  "file_path": "schema.py",
+  "file_context": "class UserSchema(Schema):\n    name = fields.Str(required=True)\n    role = fields.Str()",
+  "gold_annotations": [
+    {
+      "line": 12,
+      "type": "security",
+      "severity": "minor",
+      "issue": "Removing EXCLUDE means unknown fields pass through deserialization. Mass assignment risk.",
+      "reference": "OWASP A08:2021"
+    }
+  ]
+}

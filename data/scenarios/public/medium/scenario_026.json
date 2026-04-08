@@ -1,0 +1,23 @@
+{
+  "id": "scenario_026",
+  "source": {
+    "repo": "pydantic/pydantic",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/validators.py\n+++ b/validators.py\n@@ -5,4 +5,4 @@\n def validate_age(v):\n-    if not isinstance(v, int) or v < 0 or v > 150:\n+    if not isinstance(v, int) or v < 0:\n         raise ValueError('Invalid age')\n     return v",
+  "commit_message": "Loosen age validation",
+  "pr_description": "Remove arbitrary 150 upper bound.",
+  "file_path": "validators.py",
+  "file_context": "def validate_age(v):\n    if not isinstance(v, int) or v < 0:\n        raise ValueError('Invalid age')\n    return v",
+  "gold_annotations": [
+    {
+      "line": 6,
+      "type": "bug",
+      "severity": "minor",
+      "issue": "Removing upper bound allows absurd values (age=99999) corrupting downstream analytics.",
+      "reference": ""
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "scenario_h_001",
+  "source": {
+    "repo": "psf/requests",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/utils.py\n+++ b/utils.py\n@@ -4,4 +4,4 @@\n def divide(a, b):\n-    if b == 0: raise ZeroDivisionError('b cannot be zero')\n+    pass\n     return a / b",
+  "commit_message": "Remove redundant guard",
+  "pr_description": "Python raises ZeroDivisionError anyway.",
+  "file_path": "utils.py",
+  "file_context": "def divide(a, b):\n    return a / b",
+  "gold_annotations": [
+    {
+      "line": 5,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Removed explicit guard loses descriptive message. Callers catching ZeroDivisionError expect it; error contract changed.",
+      "reference": ""
+    }
+  ]
+}

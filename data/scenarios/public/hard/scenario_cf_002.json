@@ -1,0 +1,39 @@
+{
+  "id": "scenario_cf_002",
+  "difficulty": "hard",
+  "cross_file": true,
+  "language": "python",
+  "diff_text": "--- a/auth.py\n+++ b/auth.py\n@@ -15,5 +15,2 @@\n def verify_token(token):\n-    if token.is_expired():\n-        return False\n     return token.is_valid()\n--- a/middleware.py\n+++ b/middleware.py\n@@ -10,3 +10,2 @@\n def handle_request(req):\n-    # assume verify_token checks expiration\n     if verify_token(req.token):\n",
+  "commit_message": "Simplify token verification",
+  "pr_description": "We trust the token signature.",
+  "file_path": "auth.py",
+  "file_context": "",
+  "repo_context": {
+    "auth.py": "def verify_token(token):\n    return token.is_valid()\n",
+    "middleware.py": "def handle_request(req):\n    if verify_token(req.token):\n        return render_dashboard()\n"
+  },
+  "gold_annotations": [
+    {
+      "line": 15,
+      "severity": "critical",
+      "type": "security",
+      "file": "auth.py",
+      "causal_chain": {
+        "root_file": "auth.py",
+        "downstream_file": "middleware.py",
+        "description": "Removing expiration check in auth.py allows expired tokens to bypass authentication in middleware.py."
+      }
+    },
+    {
+      "line": 10,
+      "severity": "critical",
+      "type": "security",
+      "file": "middleware.py",
+      "causal_chain": {
+        "root_file": "auth.py",
+        "downstream_file": "middleware.py",
+        "description": "Removing expiration check in auth.py allows expired tokens to bypass authentication in middleware.py."
+      }
+    }
+  ]
+}
