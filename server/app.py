@@ -176,7 +176,7 @@ LANDING_PAGE = """<!DOCTYPE html>
   </div>
   <div class="footer">
     Built for the <strong>Scaler &times; Meta &times; PyTorch Hackathon 2026</strong><br>
-    Powered by <a href="https://github.com/meta-pytorch/OpenEnv">OpenEnv</a> &mdash;
+    Powered by <a href="https://github.com/meta-pytorch/OpenEnv" target="_blank">OpenEnv</a> &mdash;
     <a href="/leaderboard">View leaderboard</a>
   </div>
 </div>
