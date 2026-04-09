@@ -1,0 +1,23 @@
+{
+  "id": "scenario_023",
+  "source": {
+    "repo": "boto/botocore",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/retry.py\n+++ b/retry.py\n@@ -6,6 +6,6 @@\n def with_retry(fn, max_retries=3, backoff=2):\n     delay = 1\n     for i in range(max_retries):\n         try:\n             return fn()\n-        except TransientError:\n+        except Exception:\n             time.sleep(delay)\n             delay *= backoff",
+  "commit_message": "Retry on all exceptions",
+  "pr_description": "Retry on any error, not just transient ones.",
+  "file_path": "retry.py",
+  "file_context": "def with_retry(fn, max_retries=3, backoff=2):\n    delay = 1\n    for i in range(max_retries):\n        try:\n            return fn()\n        except Exception:\n            time.sleep(delay)\n            delay *= backoff",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Catching bare Exception retries on programming errors (TypeError, etc) that won't resolve with retry.",
+      "reference": ""
+    }
+  ]
+}

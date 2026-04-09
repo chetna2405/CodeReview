@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════
+   CODEREVIEW OPS — Premium Intelligence Dashboard
+   Linear-grade · Vercel-polished · Cyber Intelligence Command Center
+   ═══════════════════════════════════════════════════════════════════ */
+
+@theme {
+  /* ── Background Surfaces ── */
+  --color-bg-base: #050507;
+  --color-bg-primary: #0A0A0E;
+  --color-bg-secondary: #0D0D14;
+  --color-bg-tertiary: #14141E;
+  --color-bg-elevated: #1B1B28;
+  --color-bg-hover: #181824;
+
+  /* ── Accent (Pastel Lilac) ── */
+  --color-accent: #C8A2FF;
+  --color-accent-secondary: #B794F4;
+  --color-accent-glow: rgba(200, 162, 255, 0.4);
+  --color-accent-dim: rgba(200, 162, 255, 0.1);
+  --color-accent-border: rgba(200, 162, 255, 0.15);
+  --color-accent-hover: rgba(200, 162, 255, 0.25);
+  --color-accent-muted: rgba(200, 162, 255, 0.05);
+
+  /* ── Text ── */
+  --color-text-primary: #EDEDF0;
+  --color-text-secondary: #A0A0AB;
+  --color-text-muted: #70707D;
+  --color-text-dim: #4B4B57;
+
+  /* ── Semantic ── */
+  --color-success: #86EFAC;
+  --color-success-dim: rgba(134, 239, 172, 0.12);
+  --color-danger: #FCA5A5;
+  --color-danger-dim: rgba(252, 165, 165, 0.12);
+  --color-warning: #FDE68A;
+  --color-warning-dim: rgba(253, 230, 138, 0.12);
+  --color-info: #93C5FD;
+  --color-info-dim: rgba(147, 197, 253, 0.12);
+
+  /* ── Typography ── */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Base styles rely on Tailwind Preflight */
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Premium Surface System ── */
+
+.surface-card {
+  background: linear-gradient(180deg, var(--color-bg-primary) 0%, var(--color-bg-base) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.2);
+}
+
+.surface-card:hover {
+  border-color: rgba(200, 162, 255, 0.12);
+  box-shadow:
+    0 8px 32px -4px rgba(0, 0, 0, 0.4),
+    0 0 48px -12px rgba(200, 162, 255, 0.08);
+}
+
+.surface-inner {
+  background: var(--color-bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+}
+
+/* ── Border Utilities ── */
+.border-subtle {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Glow Effects ── */
+
+.glow-accent {
+  box-shadow:
+    0 0 24px -4px rgba(200, 162, 255, 0.12);
+}
+
+/* ── Button System ── */
+
+.btn-primary {
+  background: var(--color-text-primary);
+  color: var(--color-bg-base);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 10px 24px;
+  border-radius: 9999px; /* Pill buttons for premium feel */
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.01em;
+}
+
+.btn-primary:hover {
+  background: #ffffff;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.btn-primary.btn-lilac {
+  background: var(--color-accent);
+  color: var(--color-bg-base);
+}
+
+.btn-primary.btn-lilac:hover {
+  background: #D8B4FE;
+  box-shadow: 0 0 24px rgba(200, 162, 255, 0.3);
+}
+
+.btn-secondary {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 9px 24px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: var(--color-bg-tertiary);
+}
+
+/* ── Badge System ── */
+
+.badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+}
+
+.badge-critical { background: var(--color-danger-dim); color: var(--color-danger); border-color: rgba(252, 165, 165, 0.2); }
+.badge-warning { background: var(--color-warning-dim); color: var(--color-warning); border-color: rgba(253, 230, 138, 0.2); }
+.badge-success { background: var(--color-success-dim); color: var(--color-success); border-color: rgba(134, 239, 172, 0.2); }
+.badge-info { background: var(--color-info-dim); color: var(--color-info); border-color: rgba(147, 197, 253, 0.2); }
+.badge-accent { background: var(--color-accent-dim); color: var(--color-accent); border-color: rgba(200, 162, 255, 0.2); }
+
+/* ── Diff Highlights ── */
+
+.diff-added {
+  background: rgba(134, 239, 172, 0.05);
+  border-left: 2px solid var(--color-success);
+}
+
+.diff-removed {
+  background: rgba(252, 165, 165, 0.05);
+  border-left: 2px solid var(--color-danger);
+}
+
+.diff-meta {
+  background: rgba(200, 162, 255, 0.03);
+  color: var(--color-accent);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

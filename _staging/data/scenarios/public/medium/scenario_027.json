@@ -1,0 +1,23 @@
+{
+  "id": "scenario_027",
+  "source": {
+    "repo": "mitsuhiko/jinja",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/render.py\n+++ b/render.py\n@@ -6,6 +6,6 @@\n from jinja2 import Environment\n-env = Environment(autoescape=True)\n+env = Environment(autoescape=False)\n def render(template_str, context):\n     t = env.from_string(template_str)\n     return t.render(**context)",
+  "commit_message": "Disable autoescape for raw HTML support",
+  "pr_description": "Some templates need unescaped HTML.",
+  "file_path": "render.py",
+  "file_context": "from jinja2 import Environment\nenv = Environment(autoescape=False)\ndef render(template_str, context):\n    t = env.from_string(template_str)\n    return t.render(**context)",
+  "gold_annotations": [
+    {
+      "line": 7,
+      "type": "security",
+      "severity": "critical",
+      "issue": "autoescape=False opens XSS vulnerability if any user-controlled data reaches templates.",
+      "reference": "OWASP A03:2021"
+    }
+  ]
+}

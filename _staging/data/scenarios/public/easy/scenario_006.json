@@ -1,0 +1,23 @@
+{
+  "id": "scenario_006",
+  "source": {
+    "repo": "encode/httpx",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/cache.py\n+++ b/cache.py\n@@ -5,8 +5,6 @@\n class Cache:\n     def __init__(self, ttl=300):\n         self._data = {}\n-        self._timestamps = {}\n         self._ttl = ttl\n     def get(self, key):\n-        if key in self._data and not self._is_expired(key):\n+        if key in self._data:\n             return self._data[key]",
+  "commit_message": "Simplify cache — TTL not needed",
+  "pr_description": "Removes TTL tracking to reduce complexity.",
+  "file_path": "cache.py",
+  "file_context": "class Cache:\n    def __init__(self, ttl=300):\n        self._data = {}\n        self._ttl = ttl\n    def get(self, key):\n        if key in self._data:\n            return self._data[key]\n        return None",
+  "gold_annotations": [
+    {
+      "line": 10,
+      "type": "bug",
+      "severity": "major",
+      "issue": "TTL expiry removed — cache grows unboundedly. Memory leak in long-running processes.",
+      "reference": ""
+    }
+  ]
+}

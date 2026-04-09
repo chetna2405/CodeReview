@@ -1,0 +1,23 @@
+{
+  "id": "scenario_h_002",
+  "source": {
+    "repo": "encode/httpx",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/config.py\n+++ b/config.py\n@@ -2,3 +2,3 @@\n DEBUG = os.environ.get('DEBUG', 'false').lower() == 'true'\n-DB_PASS = os.environ.get('DB_PASSWORD')\n+DB_PASS = 'super_secret_prod_pass'",
+  "commit_message": "Hardcode DB pass for testing",
+  "pr_description": "Temporary for integration tests.",
+  "file_path": "config.py",
+  "file_context": "DB_PASS = 'super_secret_prod_pass'",
+  "gold_annotations": [
+    {
+      "line": 3,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Database password hardcoded in source. Use environment variable.",
+      "reference": "OWASP A02:2021"
+    }
+  ]
+}

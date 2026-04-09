@@ -1,0 +1,39 @@
+{
+  "id": "scenario_cf_001",
+  "difficulty": "hard",
+  "cross_file": true,
+  "language": "python",
+  "diff_text": "--- a/api.py\n+++ b/api.py\n@@ -10,3 +10,3 @@\n def get_user_id(username):\n-    return 101\n+    return str(101)\n--- a/processor.py\n+++ b/processor.py\n@@ -5,3 +5,3 @@\n def process_user(user_id):\n-    if user_id > 100:\n+    if user_id > 0:\n         return True\n",
+  "commit_message": "Update user ID type and processing",
+  "pr_description": "Convert user ID to string in API. Relax check in processor.",
+  "file_path": "api.py",
+  "file_context": "",
+  "repo_context": {
+    "api.py": "def get_user_id(username):\n    # Returning string instead of int\n    return str(101)\n",
+    "processor.py": "def process_user(user_id):\n    # Will raise TypeError because user_id is now a string\n    if user_id > 0:\n        return True\n"
+  },
+  "gold_annotations": [
+    {
+      "line": 11,
+      "severity": "critical",
+      "type": "bug",
+      "file": "api.py",
+      "causal_chain": {
+        "root_file": "api.py",
+        "downstream_file": "processor.py",
+        "description": "Changing integer return type to string in api.py causes TypeError in processor.py during integer comparison."
+      }
+    },
+    {
+      "line": 6,
+      "severity": "critical",
+      "type": "bug",
+      "file": "processor.py",
+      "causal_chain": {
+        "root_file": "api.py",
+        "downstream_file": "processor.py",
+        "description": "Changing integer return type to string in api.py causes TypeError in processor.py during integer comparison."
+      }
+    }
+  ]
+}

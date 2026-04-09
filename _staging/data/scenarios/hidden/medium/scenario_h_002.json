@@ -1,0 +1,23 @@
+{
+  "id": "scenario_h_005",
+  "source": {
+    "repo": "sqlalchemy/sqlalchemy",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/models.py\n+++ b/models.py\n@@ -12,6 +12,4 @@\n class Order(Base):\n     total = Column(Float)\n-    @validates('total')\n-    def validate_total(self, key, value):\n-        assert value >= 0, 'Total must be non-negative'\n-        return value\n",
+  "commit_message": "Remove validator — DB constraint handles it",
+  "pr_description": "DB has CHECK constraint.",
+  "file_path": "models.py",
+  "file_context": "class Order(Base):\n    total = Column(Float)",
+  "gold_annotations": [
+    {
+      "line": 15,
+      "type": "bug",
+      "severity": "major",
+      "issue": "App-level validation removed. DB constraint raises cryptic IntegrityError instead of clean ValidationError.",
+      "reference": ""
+    }
+  ]
+}

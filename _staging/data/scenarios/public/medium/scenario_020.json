@@ -1,0 +1,23 @@
+{
+  "id": "scenario_020",
+  "source": {
+    "repo": "tornadoweb/tornado",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/handlers.py\n+++ b/handlers.py\n@@ -10,7 +10,5 @@\n class FileHandler(BaseHandler):\n     def get(self, path):\n-        safe_path = os.path.normpath(os.path.join(BASE_DIR, path))\n-        if not safe_path.startswith(BASE_DIR):\n-            raise HTTPError(403)\n+        safe_path = os.path.join(BASE_DIR, path)\n         with open(safe_path) as f:\n             self.write(f.read())",
+  "commit_message": "Simplify file serving path handling",
+  "pr_description": "Removes redundant path normalization.",
+  "file_path": "handlers.py",
+  "file_context": "class FileHandler(BaseHandler):\n    def get(self, path):\n        safe_path = os.path.join(BASE_DIR, path)\n        with open(safe_path) as f:\n            self.write(f.read())",
+  "gold_annotations": [
+    {
+      "line": 14,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Path traversal: removed normpath + prefix check allows ../../etc/passwd access.",
+      "reference": "OWASP A01:2021"
+    }
+  ]
+}

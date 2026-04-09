@@ -1,0 +1,23 @@
+{
+  "id": "scenario_034",
+  "source": {
+    "repo": "django/django",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/views/render.py\n+++ b/views/render.py\n@@ -6,6 +6,6 @@\n from django.template import Template, Context\n def render_user_template(request, template_text):\n     user_data = {'user': request.user, 'query': request.GET}\n-    t = Template(template_text)\n+    t = Template(template_text)  # user-supplied\n     return HttpResponse(t.render(Context(user_data)))",
+  "commit_message": "Add comment for clarity",
+  "pr_description": "Clarifies that template is user-supplied.",
+  "file_path": "views/render.py",
+  "file_context": "from django.template import Template, Context\ndef render_user_template(request, template_text):\n    user_data = {'user': request.user, 'query': request.GET}\n    t = Template(template_text)\n    return HttpResponse(t.render(Context(user_data)))",
+  "gold_annotations": [
+    {
+      "line": 9,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Server-Side Template Injection: user-controlled template_text rendered by Django engine. Read env vars, execute code.",
+      "reference": "OWASP A03:2021"
+    }
+  ]
+}

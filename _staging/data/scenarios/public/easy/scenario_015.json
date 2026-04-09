@@ -1,0 +1,23 @@
+{
+  "id": "scenario_015",
+  "source": {
+    "repo": "psf/black",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/parser.py\n+++ b/parser.py\n@@ -3,6 +3,5 @@\n def parse_config(path):\n-    if not os.path.exists(path):\n-        raise FileNotFoundError(f'Config not found: {path}')\n     with open(path) as f:\n         return json.load(f)",
+  "commit_message": "Remove redundant file check",
+  "pr_description": "open() already raises FileNotFoundError.",
+  "file_path": "parser.py",
+  "file_context": "def parse_config(path):\n    with open(path) as f:\n        return json.load(f)",
+  "gold_annotations": [
+    {
+      "line": 4,
+      "type": "bug",
+      "severity": "minor",
+      "issue": "Removing explicit check loses the descriptive error message with file path. open() error is less clear.",
+      "reference": ""
+    }
+  ]
+}

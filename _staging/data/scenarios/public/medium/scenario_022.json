@@ -1,0 +1,23 @@
+{
+  "id": "scenario_022",
+  "source": {
+    "repo": "encode/httpx",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/pagination.py\n+++ b/pagination.py\n@@ -7,6 +7,6 @@\n def paginate(items, page, size=20):\n-    start = (page - 1) * size\n+    start = page * size\n     end = start + size\n     return items[start:end]",
+  "commit_message": "Fix pagination offset",
+  "pr_description": "Corrects page offset calculation.",
+  "file_path": "pagination.py",
+  "file_context": "def paginate(items, page, size=20):\n    start = page * size\n    end = start + size\n    return items[start:end]",
+  "gold_annotations": [
+    {
+      "line": 8,
+      "type": "bug",
+      "severity": "major",
+      "issue": "page*size skips first page (page=1 starts at item 20). Should be (page-1)*size.",
+      "reference": ""
+    }
+  ]
+}

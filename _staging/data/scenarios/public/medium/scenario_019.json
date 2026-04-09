@@ -1,0 +1,30 @@
+{
+  "id": "scenario_019",
+  "source": {
+    "repo": "aio-libs/aiohttp",
+    "note": "sanitized"
+  },
+  "difficulty": "medium",
+  "language": "python",
+  "diff_text": "--- a/session.py\n+++ b/session.py\n@@ -8,6 +8,4 @@\n async def fetch(url, session):\n-    async with session.get(url) as resp:\n-        resp.raise_for_status()\n-        return await resp.json()\n+    resp = await session.get(url)\n+    return await resp.json()",
+  "commit_message": "Simplify HTTP fetch helper",
+  "pr_description": "Removes context manager overhead.",
+  "file_path": "session.py",
+  "file_context": "async def fetch(url, session):\n    resp = await session.get(url)\n    return await resp.json()",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Response not used as context manager — underlying connection not released. Resource leak.",
+      "reference": ""
+    },
+    {
+      "line": 11,
+      "type": "bug",
+      "severity": "minor",
+      "issue": "raise_for_status() removed — HTTP 4xx/5xx silently returned as JSON parse errors.",
+      "reference": ""
+    }
+  ]
+}

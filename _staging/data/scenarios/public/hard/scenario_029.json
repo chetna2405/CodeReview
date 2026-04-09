@@ -1,0 +1,23 @@
+{
+  "id": "scenario_029",
+  "source": {
+    "repo": "pallets/flask",
+    "note": "sanitized"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/api/exec.py\n+++ b/api/exec.py\n@@ -8,6 +8,6 @@\n @app.route('/run')\n def run_code():\n     code = request.args.get('code', '')\n-    restricted = RestrictedPython.compile(code)\n-    exec(restricted, {})\n+    exec(code)\n     return 'ok'",
+  "commit_message": "Remove RestrictedPython overhead",
+  "pr_description": "Simplify code execution endpoint.",
+  "file_path": "api/exec.py",
+  "file_context": "@app.route('/run')\ndef run_code():\n    code = request.args.get('code', '')\n    exec(code)\n    return 'ok'",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Remote code execution: unfiltered exec() of user input. Full server compromise.",
+      "reference": "OWASP A03:2021"
+    }
+  ]
+}

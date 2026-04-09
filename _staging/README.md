@@ -1,12 +1,12 @@
 ---
 title: CodeReviewEnv
-emoji: 🔍
+emoji: "🔍"
 colorFrom: blue
 colorTo: purple
 sdk: docker
-app_file: server/app.py
-app_port: 8000
 pinned: false
+license: mit
+app_port: 8000
 ---
 
 # CodeReviewEnv 🔍

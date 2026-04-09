@@ -1,0 +1,23 @@
+{
+  "id": "scenario_004",
+  "source": {
+    "repo": "psf/black",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/auth/login.py\n+++ b/auth/login.py\n@@ -6,10 +6,8 @@\n def authenticate(username, password):\n     user = User.find(username)\n     if not user:\n         return None\n-    if not user.check_password(password):\n-        return None\n     return user",
+  "commit_message": "Simplify auth flow",
+  "pr_description": "Removes redundant password check.",
+  "file_path": "auth/login.py",
+  "file_context": "def authenticate(username, password):\n    user = User.find(username)\n    if not user:\n        return None\n    return user",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Password verification removed — any password authenticates any user.",
+      "reference": "OWASP A07:2021"
+    }
+  ]
+}

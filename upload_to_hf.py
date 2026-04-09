@@ -9,7 +9,7 @@ from pathlib import Path
 from huggingface_hub import HfApi, upload_folder
 
 REPO_ID = "chetna1910/CodeReviewEnv"
-PROJECT_DIR = Path(r"c:\Users\chetn\OpenEnv")
+PROJECT_DIR = Path(__file__).parent.resolve()
 
 # Files/dirs to exclude from upload
 EXCLUDE_PATTERNS = [

@@ -1,0 +1,23 @@
+{
+  "id": "scenario_002",
+  "source": {
+    "repo": "django/django",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/api/views.py\n+++ b/api/views.py\n@@ -5,8 +5,6 @@\n def get_profile(request):\n     user_id = request.GET.get('user_id')\n-    if user_id is None:\n-        return HttpResponse(status=400)\n     user = User.objects.get(id=user_id)\n     return JsonResponse(user.to_dict())",
+  "commit_message": "Simplify profile view",
+  "pr_description": "Removes redundant None check.",
+  "file_path": "api/views.py",
+  "file_context": "def get_profile(request):\n    user_id = request.GET.get('user_id')\n    user = User.objects.get(id=user_id)\n    return JsonResponse(user.to_dict())",
+  "gold_annotations": [
+    {
+      "line": 7,
+      "type": "bug",
+      "severity": "critical",
+      "issue": "Removed None check — User.objects.get(id=None) raises unhandled exception.",
+      "reference": ""
+    }
+  ]
+}

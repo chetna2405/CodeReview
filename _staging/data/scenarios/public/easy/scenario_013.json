@@ -1,0 +1,23 @@
+{
+  "id": "scenario_013",
+  "source": {
+    "repo": "aio-libs/aiohttp",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/db.py\n+++ b/db.py\n@@ -4,6 +4,4 @@\n async def get_conn():\n     conn = await pool.acquire()\n-    try:\n-        yield conn\n-    finally:\n-        await pool.release(conn)\n+    return conn",
+  "commit_message": "Simplify connection helper",
+  "pr_description": "Returns connection directly instead of context manager.",
+  "file_path": "db.py",
+  "file_context": "async def get_conn():\n    conn = await pool.acquire()\n    return conn",
+  "gold_annotations": [
+    {
+      "line": 5,
+      "type": "bug",
+      "severity": "critical",
+      "issue": "Connection leak: pool.release() never called. Pool exhausts under load causing deadlock.",
+      "reference": ""
+    }
+  ]
+}

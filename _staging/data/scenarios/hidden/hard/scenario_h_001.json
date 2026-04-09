@@ -1,0 +1,23 @@
+{
+  "id": "scenario_h_006",
+  "source": {
+    "repo": "pallets/flask",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "hard",
+  "language": "python",
+  "diff_text": "--- a/app.py\n+++ b/app.py\n@@ -15,6 +15,6 @@\n @app.route('/redirect')\n def do_redirect():\n     url = request.args.get('next', '/')\n-    if not url.startswith('/'):\n-        abort(400)\n+    return redirect(url)",
+  "commit_message": "Allow external redirects for OAuth",
+  "pr_description": "OAuth flows need external redirects.",
+  "file_path": "app.py",
+  "file_context": "@app.route('/redirect')\ndef do_redirect():\n    url = request.args.get('next', '/')\n    return redirect(url)",
+  "gold_annotations": [
+    {
+      "line": 18,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Open redirect: user-controlled URL used without validation. Phishing via trusted domain.",
+      "reference": "OWASP A01:2021"
+    }
+  ]
+}

@@ -1,0 +1,332 @@
+[
+  {
+    "id": "medium_001",
+    "difficulty": "medium",
+    "diff_text": "--- a/services/payment.py\n+++ b/services/payment.py\n@@ -15,18 +15,16 @@\n class PaymentService:\n     def process_payment(self, order: Order) -> PaymentResult:\n         \"\"\"Process payment for an order. Returns PaymentResult.\"\"\"\n-        if order.total <= 0:\n+        if order.total < 0:\n             return PaymentResult(success=False, error=\"Invalid amount\")\n \n-        try:\n-            charge = self.gateway.charge(\n-                amount=order.total,\n-                currency=order.currency,\n-                idempotency_key=order.id\n-            )\n-        except GatewayTimeout:\n-            return PaymentResult(success=False, error=\"Gateway timeout\", retryable=True)\n+        charge = self.gateway.charge(\n+            amount=order.total,\n+            currency=order.currency,\n+        )\n \n         order.status = 'paid'\n+        order.payment_id = charge.id\n         order.save()\n         return PaymentResult(success=True, charge_id=charge.id)",
+    "commit_message": "Simplify payment processing",
+    "pr_description": "Cleaned up the payment processing code. Removed unnecessary error handling and simplified the flow.",
+    "file_path": "services/payment.py",
+    "file_context": "from models import Order, PaymentResult\n\nclass GatewayTimeout(Exception):\n    pass\n\nclass PaymentService:\n    def __init__(self, gateway):\n        self.gateway = gateway\n\n    def process_payment(self, order: Order) -> PaymentResult:\n        \"\"\"Process payment for an order. Returns PaymentResult.\"\"\"\n        if order.total < 0:\n            return PaymentResult(success=False, error=\"Invalid amount\")\n\n        charge = self.gateway.charge(\n            amount=order.total,\n            currency=order.currency,\n        )\n\n        order.status = 'paid'\n        order.payment_id = charge.id\n        order.save()\n        return PaymentResult(success=True, charge_id=charge.id)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 18,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Changed <= 0 to < 0 allows zero-amount payments. An order with total=0 will now be charged, which is likely unintended — most gateways reject or behave unexpectedly on $0 charges.",
+        "explanation": "Zero-amount charges can cause issues with payment gateways (some reject them, some create phantom transactions). The original <= 0 guard was correct."
+      },
+      {
+        "line_number": 21,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Removed try/except for GatewayTimeout. If the payment gateway times out, the exception will now propagate up unhandled, potentially leaving the order in an inconsistent state.",
+        "explanation": "Gateway timeouts are common in production. Without the try/except, a timeout crash could leave the order unpaid but the charge may have actually gone through on the gateway side — causing a double-charge on retry."
+      },
+      {
+        "line_number": 22,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed idempotency_key from gateway.charge() call. Without it, retrying a failed payment could result in duplicate charges.",
+        "explanation": "The idempotency_key=order.id ensured that retrying the same order wouldn't create duplicate charges. Removing it means network retries or user retries can cause double billing."
+      }
+    ]
+  },
+  {
+    "id": "medium_002",
+    "difficulty": "medium",
+    "diff_text": "--- a/services/email_sender.py\n+++ b/services/email_sender.py\n@@ -5,20 +5,18 @@\n from concurrent.futures import ThreadPoolExecutor\n import smtplib\n \n-_executor = ThreadPoolExecutor(max_workers=4)\n+_executor = ThreadPoolExecutor(max_workers=50)\n \n def send_bulk_emails(recipients: list[str], subject: str, body: str) -> dict:\n     \"\"\"Send emails to all recipients concurrently.\"\"\"\n     results = {}\n+    futures = {}\n \n-    def _send_one(email: str) -> bool:\n-        try:\n-            smtp = smtplib.SMTP('smtp.company.com', 587)\n-            smtp.send_message(msg=_build_msg(email, subject, body))\n-            smtp.quit()\n-            return True\n-        except Exception:\n-            return False\n-\n-    futures = {_executor.submit(_send_one, r): r for r in recipients}\n-    for future in futures:\n-        results[futures[future]] = future.result(timeout=30)\n+    for recipient in recipients:\n+        smtp = smtplib.SMTP('smtp.company.com', 587)\n+        futures[recipient] = _executor.submit(smtp.send_message, _build_msg(recipient, subject, body))\n+\n+    for recipient, future in futures.items():\n+        results[recipient] = future.result()\n \n     return results",
+    "commit_message": "Refactor bulk email sending",
+    "pr_description": "Simplified the bulk email sender and increased thread pool for better throughput.",
+    "file_path": "services/email_sender.py",
+    "file_context": "from concurrent.futures import ThreadPoolExecutor\nimport smtplib\n\n_executor = ThreadPoolExecutor(max_workers=50)\n\ndef send_bulk_emails(recipients: list[str], subject: str, body: str) -> dict:\n    results = {}\n    futures = {}\n\n    for recipient in recipients:\n        smtp = smtplib.SMTP('smtp.company.com', 587)\n        futures[recipient] = _executor.submit(smtp.send_message, _build_msg(recipient, subject, body))\n\n    for recipient, future in futures.items():\n        results[recipient] = future.result()\n\n    return results",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 8,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "ThreadPoolExecutor max_workers increased from 4 to 50. This will open up to 50 simultaneous SMTP connections, likely overwhelming the mail server and causing rate limiting or connection refusals.",
+        "explanation": "50 concurrent SMTP connections is aggressive. Most SMTP servers have connection limits (often 10-20 per client IP). This will cause connection failures under load."
+      },
+      {
+        "line_number": 15,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "SMTP connection created in main thread but used in worker thread. smtplib.SMTP objects are not thread-safe — the connection may be used before the handshake completes or corrupted by concurrent access.",
+        "explanation": "The SMTP object is created in the loop (main thread) and passed to a thread pool worker. The SMTP handshake happens on construction, but the connection state is not thread-safe. Each thread should create its own SMTP connection."
+      },
+      {
+        "line_number": 18,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed timeout from future.result(). Original had timeout=30. Without timeout, a hanging SMTP connection will block indefinitely, causing the entire function to hang.",
+        "explanation": "future.result() without timeout will block forever if the SMTP server hangs. The original timeout=30 was a safety net. Also, no exception handling means one failed email crashes the entire batch."
+      },
+      {
+        "line_number": 15,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "SMTP connections are never closed. Original code called smtp.quit(). New code creates SMTP objects but never closes them, leaking socket connections.",
+        "explanation": "Each iteration creates a new smtplib.SMTP connection that is never closed. For a large recipient list, this leaks hundreds of socket connections, eventually hitting OS file descriptor limits."
+      }
+    ]
+  },
+  {
+    "id": "medium_003",
+    "difficulty": "medium",
+    "diff_text": "--- a/data/repository.py\n+++ b/data/repository.py\n@@ -10,15 +10,12 @@\n class UserRepository:\n     def __init__(self, db):\n         self.db = db\n-        self._lock = threading.Lock()\n \n     def update_balance(self, user_id: int, amount: float) -> float:\n         \"\"\"Update user balance and return new balance. Thread-safe.\"\"\"\n-        with self._lock:\n-            user = self.db.get_user(user_id)\n-            new_balance = user.balance + amount\n-            user.balance = new_balance\n-            self.db.save(user)\n-            return new_balance\n+        user = self.db.get_user(user_id)\n+        new_balance = user.balance + amount\n+        user.balance = new_balance\n+        self.db.save(user)\n+        return new_balance",
+    "commit_message": "Remove unnecessary lock from repository",
+    "pr_description": "The lock was causing performance issues. Our DB handles concurrency already.",
+    "file_path": "data/repository.py",
+    "file_context": "import threading\n\nclass UserRepository:\n    def __init__(self, db):\n        self.db = db\n\n    def update_balance(self, user_id: int, amount: float) -> float:\n        \"\"\"Update user balance and return new balance. Thread-safe.\"\"\"\n        user = self.db.get_user(user_id)\n        new_balance = user.balance + amount\n        user.balance = new_balance\n        self.db.save(user)\n        return new_balance",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 17,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Race condition: Removed threading lock from update_balance. The read-modify-write pattern (get balance → add amount → save) is not atomic. Concurrent calls can cause lost updates.",
+        "explanation": "Without the lock, two concurrent calls to update_balance can both read the same balance, compute different new values, and one will overwrite the other. E.g., balance=100, two +50 calls → expected 200, actual could be 150. The docstring still says 'Thread-safe' which is now a lie."
+      }
+    ]
+  },
+  {
+    "id": "medium_004",
+    "difficulty": "medium",
+    "diff_text": "--- a/api/middleware.py\n+++ b/api/middleware.py\n@@ -8,16 +8,13 @@\n class RateLimiter:\n-    def __init__(self, max_requests: int = 100, window_seconds: int = 60):\n+    def __init__(self, max_requests: int = 100, window_seconds: int = 3600):\n         self.max_requests = max_requests\n         self.window_seconds = window_seconds\n-        self._requests: dict[str, list[float]] = {}\n+        self._requests: dict[str, int] = {}\n \n     def is_allowed(self, client_ip: str) -> bool:\n-        now = time.time()\n-        if client_ip not in self._requests:\n-            self._requests[client_ip] = []\n-        # Remove expired entries\n-        self._requests[client_ip] = [\n-            t for t in self._requests[client_ip] if now - t < self.window_seconds\n-        ]\n-        if len(self._requests[client_ip]) >= self.max_requests:\n+        if client_ip not in self._requests:\n+            self._requests[client_ip] = 0\n+        self._requests[client_ip] += 1\n+        if self._requests[client_ip] > self.max_requests:\n             return False\n-        self._requests[client_ip].append(now)\n         return True",
+    "commit_message": "Simplify rate limiter",
+    "pr_description": "Simplified rate limiting logic. The sliding window was overly complex for our needs.",
+    "file_path": "api/middleware.py",
+    "file_context": "import time\n\nclass RateLimiter:\n    def __init__(self, max_requests: int = 100, window_seconds: int = 3600):\n        self.max_requests = max_requests\n        self.window_seconds = window_seconds\n        self._requests: dict[str, int] = {}\n\n    def is_allowed(self, client_ip: str) -> bool:\n        if client_ip not in self._requests:\n            self._requests[client_ip] = 0\n        self._requests[client_ip] += 1\n        if self._requests[client_ip] > self.max_requests:\n            return False\n        return True",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 11,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Rate limiter window changed from 60 seconds to 3600 seconds (1 hour), but more critically, the counter never resets. Once a client hits 100 requests, they are permanently blocked until the server restarts.",
+        "explanation": "The sliding window logic was replaced with a simple counter that only increments. There's no mechanism to reset the counter — no expiration, no periodic cleanup. This is a permanent ban after 100 requests, not rate limiting."
+      },
+      {
+        "line_number": 11,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "window_seconds parameter is now unused. It's accepted in __init__ but never referenced in is_allowed(). This is dead code that misleads anyone configuring the rate limiter.",
+        "explanation": "The window_seconds parameter creates a false sense of configurability. Setting window_seconds=60 does nothing — the counter never resets regardless of the window value."
+      }
+    ]
+  },
+  {
+    "id": "medium_005",
+    "difficulty": "medium",
+    "diff_text": "--- a/services/notification.py\n+++ b/services/notification.py\n@@ -12,20 +12,17 @@\n class NotificationService:\n     def __init__(self, config: dict):\n         self.config = config\n-        self._queue = queue.Queue(maxsize=1000)\n+        self._queue = queue.Queue()\n         self._worker = threading.Thread(target=self._process_queue, daemon=True)\n         self._worker.start()\n \n     def send(self, user_id: int, message: str, channel: str = 'email'):\n         \"\"\"Queue a notification for async delivery.\"\"\"\n-        self._queue.put({\n+        self._queue.put_nowait({\n             'user_id': user_id,\n             'message': message,\n             'channel': channel,\n-            'timestamp': time.time(),\n-            'retries_left': 3\n         })\n \n     def _process_queue(self):\n         while True:\n-            item = self._queue.get(timeout=5)\n+            item = self._queue.get()\n             self._deliver(item)",
+    "commit_message": "Clean up notification service",
+    "pr_description": "Simplified notification queuing by removing unnecessary fields and constraints.",
+    "file_path": "services/notification.py",
+    "file_context": "import queue\nimport threading\nimport time\n\nclass NotificationService:\n    def __init__(self, config: dict):\n        self.config = config\n        self._queue = queue.Queue()\n        self._worker = threading.Thread(target=self._process_queue, daemon=True)\n        self._worker.start()\n\n    def send(self, user_id: int, message: str, channel: str = 'email'):\n        self._queue.put_nowait({\n            'user_id': user_id,\n            'message': message,\n            'channel': channel,\n        })\n\n    def _process_queue(self):\n        while True:\n            item = self._queue.get()\n            self._deliver(item)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 15,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed maxsize=1000 from Queue. Without a size limit, a burst of notifications can cause unbounded memory growth. The queue can grow infinitely if delivery is slower than enqueueing.",
+        "explanation": "The maxsize=1000 was a backpressure mechanism. Without it, a spike in notifications (e.g., mass alert) can consume all available memory before the worker thread processes them."
+      },
+      {
+        "line_number": 20,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Changed put() to put_nowait(). Combined with removing maxsize, this means put_nowait will never block OR raise queue.Full. But if maxsize were restored, put_nowait would silently drop notifications when the queue is full. Inconsistent safety design.",
+        "explanation": "put_nowait() raises queue.Full if the queue is at capacity, but since maxsize was removed, it never fires. The original put() would block until space is available, providing natural backpressure."
+      },
+      {
+        "line_number": 23,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed 'retries_left' from queued items. If _deliver fails, there's no retry mechanism. Transient failures (network blips) will cause notifications to be permanently lost.",
+        "explanation": "The retries_left field was likely used by _deliver to retry on failure. Without it, any delivery failure is permanent and silent."
+      },
+      {
+        "line_number": 29,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed timeout=5 from queue.get(). Without timeout, the worker thread blocks indefinitely when the queue is empty, which makes graceful shutdown impossible.",
+        "explanation": "With timeout=5, the worker would periodically wake up even if the queue is empty, allowing it to check for shutdown signals. Without timeout, the daemon thread is stuck in get() forever."
+      }
+    ]
+  },
+  {
+    "id": "medium_006",
+    "difficulty": "medium",
+    "diff_text": "--- a/utils/date_utils.py\n+++ b/utils/date_utils.py\n@@ -3,18 +3,15 @@\n from datetime import datetime, timezone, timedelta\n \n def is_within_business_hours(dt: datetime) -> bool:\n-    \"\"\"Check if datetime falls within business hours (9 AM - 5 PM, Mon-Fri, UTC).\"\"\"\n-    if dt.tzinfo is None:\n-        dt = dt.replace(tzinfo=timezone.utc)\n-    utc_dt = dt.astimezone(timezone.utc)\n-    if utc_dt.weekday() >= 5:  # Saturday=5, Sunday=6\n+    \"\"\"Check if datetime falls within business hours (9 AM - 5 PM, Mon-Fri).\"\"\"\n+    if dt.weekday() >= 5:  # Saturday=5, Sunday=6\n         return False\n-    return 9 <= utc_dt.hour < 17\n+    return 9 <= dt.hour <= 17\n \n def add_business_days(start: datetime, days: int) -> datetime:\n     current = start\n     added = 0\n     while added < days:\n         current += timedelta(days=1)\n-        if current.weekday() < 5:\n+        if is_within_business_hours(current):\n             added += 1\n     return current",
+    "commit_message": "Simplify business hours check",
+    "pr_description": "Removed timezone handling since we standardized on UTC across the system.",
+    "file_path": "utils/date_utils.py",
+    "file_context": "from datetime import datetime, timezone, timedelta\n\ndef is_within_business_hours(dt: datetime) -> bool:\n    \"\"\"Check if datetime falls within business hours (9 AM - 5 PM, Mon-Fri).\"\"\"\n    if dt.weekday() >= 5:\n        return False\n    return 9 <= dt.hour <= 17\n\ndef add_business_days(start: datetime, days: int) -> datetime:\n    current = start\n    added = 0\n    while added < days:\n        current += timedelta(days=1)\n        if is_within_business_hours(current):\n            added += 1\n    return current",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 6,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed timezone normalization. Original code converted to UTC before checking hours. Without it, the same timestamp gives different results depending on the system's local timezone.",
+        "explanation": "If the server runs in US/Eastern, 10 AM UTC would be checked as 6 AM Eastern and incorrectly marked as outside business hours. The timezone handling was essential for correctness."
+      },
+      {
+        "line_number": 9,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Changed 'hour < 17' to 'hour <= 17'. Now 5:30 PM (hour=17) is considered within business hours, but originally it wasn't. This extends business hours by almost an hour (17:00-17:59).",
+        "explanation": "The original < 17 meant business hours ended at 5:00 PM exactly. <= 17 includes the entire 5 PM hour (5:00-5:59), effectively extending business hours to 6 PM."
+      },
+      {
+        "line_number": 17,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "add_business_days now uses is_within_business_hours instead of simple weekday check. Since timedelta(days=1) doesn't change the time, this will infinite-loop if the start time falls outside 9-17.",
+        "explanation": "If start has hour=20 (8 PM), every current will also have hour=20, so is_within_business_hours always returns False. The while loop never increments 'added' and runs forever."
+      }
+    ]
+  },
+  {
+    "id": "medium_007",
+    "difficulty": "medium",
+    "diff_text": "--- a/api/serializers.py\n+++ b/api/serializers.py\n@@ -5,16 +5,14 @@\n import json\n from decimal import Decimal\n+from datetime import datetime\n \n class APISerializer:\n     def serialize(self, data: dict) -> str:\n         \"\"\"Serialize data to JSON string.\"\"\"\n-        return json.dumps(data, default=self._default_handler, ensure_ascii=False)\n+        return json.dumps(data, ensure_ascii=False)\n \n     def deserialize(self, raw: str) -> dict:\n-        return json.loads(raw, parse_float=Decimal)\n+        return json.loads(raw)\n-\n-    @staticmethod\n-    def _default_handler(obj):\n-        if isinstance(obj, Decimal):\n-            return float(obj)\n-        if hasattr(obj, 'isoformat'):\n-            return obj.isoformat()\n-        raise TypeError(f\"Object of type {type(obj)} is not JSON serializable\")",
+    "commit_message": "Simplify JSON serialization",
+    "pr_description": "Removed custom serialization handlers. Standard json module handles everything we need.",
+    "file_path": "api/serializers.py",
+    "file_context": "import json\nfrom decimal import Decimal\nfrom datetime import datetime\n\nclass APISerializer:\n    def serialize(self, data: dict) -> str:\n        \"\"\"Serialize data to JSON string.\"\"\"\n        return json.dumps(data, ensure_ascii=False)\n\n    def deserialize(self, raw: str) -> dict:\n        return json.loads(raw)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 10,
+        "severity": "critical",
+        "issue_type": "bug",
+        "description": "Removed default handler for Decimal and datetime objects. json.dumps will now raise TypeError when the data contains Decimal (common in financial data) or datetime objects.",
+        "explanation": "The _default_handler converted Decimal to float and datetime to ISO format strings. Without it, any API response containing these types (e.g., prices, timestamps) will crash with 'Object of type Decimal is not JSON serializable'."
+      },
+      {
+        "line_number": 13,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed parse_float=Decimal from json.loads. Floating-point numbers in JSON will now be parsed as Python float, losing precision. For financial data, Decimal parsing was essential.",
+        "explanation": "JSON number 19.99 parsed as float becomes 19.989999999999998. With Decimal it stays exact. If this API handles money, this introduces rounding errors in every monetary value."
+      }
+    ]
+  },
+  {
+    "id": "medium_008",
+    "difficulty": "medium",
+    "diff_text": "--- a/services/file_uploader.py\n+++ b/services/file_uploader.py\n@@ -8,20 +8,14 @@\n ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx'}\n-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB\n \n def upload_file(file_data: bytes, filename: str, user_id: int) -> str:\n-    \"\"\"Upload a file and return the storage path.\"\"\"\n-    ext = os.path.splitext(filename)[1].lower()\n-    if ext not in ALLOWED_EXTENSIONS:\n-        raise ValueError(f\"File type {ext} not allowed\")\n-    if len(file_data) > MAX_FILE_SIZE:\n-        raise ValueError(f\"File exceeds maximum size of {MAX_FILE_SIZE} bytes\")\n+    \"\"\"Upload a file and return the storage path.\"\"\"\n+    # Generate unique filename to prevent collisions\n+    safe_name = f\"{user_id}_{filename}\"\n+    path = os.path.join('/uploads', safe_name)\n \n-    safe_name = f\"{user_id}_{uuid.uuid4().hex}{ext}\"\n-    path = os.path.join('/uploads', str(user_id), safe_name)\n-    os.makedirs(os.path.dirname(path), exist_ok=True)\n     with open(path, 'wb') as f:\n         f.write(file_data)\n+\n     return path",
+    "commit_message": "Simplify file upload logic",
+    "pr_description": "Reduced complexity of file upload. Extension checking is handled by the frontend now.",
+    "file_path": "services/file_uploader.py",
+    "file_context": "import os\nimport uuid\n\nALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.pdf', '.doc', '.docx'}\n\ndef upload_file(file_data: bytes, filename: str, user_id: int) -> str:\n    safe_name = f\"{user_id}_{filename}\"\n    path = os.path.join('/uploads', safe_name)\n\n    with open(path, 'wb') as f:\n        f.write(file_data)\n\n    return path",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 12,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Removed server-side file extension validation. Relying on frontend validation is a security antipattern — attackers bypass frontend checks trivially. Users can now upload .exe, .sh, .py or any executable file.",
+        "explanation": "Frontend validation is for UX, not security. An attacker can send any file directly via curl/Postman. Without server-side extension checking, malicious files (.exe, .php, .sh) can be uploaded."
+      },
+      {
+        "line_number": 12,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Removed file size limit. Without MAX_FILE_SIZE check, an attacker can upload arbitrarily large files, causing disk exhaustion (denial of service).",
+        "explanation": "No size check means a single request can upload a multi-GB file, filling the disk and crashing the server. The 10MB limit was essential."
+      },
+      {
+        "line_number": 15,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Path traversal vulnerability: filename is used directly in path construction. A filename like '../../etc/passwd' would write outside /uploads. Original code used uuid.uuid4().hex to generate a safe name.",
+        "explanation": "The original safe_name used uuid4().hex (no user-controlled path components). The new code uses the raw filename, allowing path traversal: os.path.join('/uploads', '1_../../etc/crontab') resolves to '/etc/crontab'."
+      },
+      {
+        "line_number": 16,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed per-user directory structure (str(user_id) subdirectory) and os.makedirs. All files now go into flat /uploads directory — filename collisions between users are possible.",
+        "explanation": "User 1 uploading 'report.pdf' and user 2 uploading 'report.pdf' will overwrite each other. The original per-user directory structure prevented this."
+      }
+    ]
+  },
+  {
+    "id": "medium_009",
+    "difficulty": "medium",
+    "diff_text": "--- a/workers/task_processor.py\n+++ b/workers/task_processor.py\n@@ -10,22 +10,16 @@\n class TaskProcessor:\n     def __init__(self, db, max_concurrent: int = 5):\n         self.db = db\n-        self._semaphore = asyncio.Semaphore(max_concurrent)\n+        self.max_concurrent = max_concurrent\n         self._running = set()\n \n     async def process_batch(self, task_ids: list[int]):\n-        tasks = []\n-        for task_id in task_ids:\n-            tasks.append(self._process_one(task_id))\n-        results = await asyncio.gather(*tasks, return_exceptions=True)\n-        return results\n+        results = []\n+        for task_id in task_ids:\n+            result = await self._process_one(task_id)\n+            results.append(result)\n+        return results\n \n     async def _process_one(self, task_id: int):\n-        async with self._semaphore:\n-            self._running.add(task_id)\n-            try:\n-                result = await self.db.execute_task(task_id)\n-                return result\n-            finally:\n-                self._running.discard(task_id)\n+        self._running.add(task_id)\n+        result = await self.db.execute_task(task_id)\n+        self._running.discard(task_id)\n+        return result",
+    "commit_message": "Simplify async task processing",
+    "pr_description": "Removed async complexity. Sequential processing is more predictable and easier to debug.",
+    "file_path": "workers/task_processor.py",
+    "file_context": "import asyncio\n\nclass TaskProcessor:\n    def __init__(self, db, max_concurrent: int = 5):\n        self.db = db\n        self.max_concurrent = max_concurrent\n        self._running = set()\n\n    async def process_batch(self, task_ids: list[int]):\n        results = []\n        for task_id in task_ids:\n            result = await self._process_one(task_id)\n            results.append(result)\n        return results\n\n    async def _process_one(self, task_id: int):\n        self._running.add(task_id)\n        result = await self.db.execute_task(task_id)\n        self._running.discard(task_id)\n        return result",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 17,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Changed from concurrent (asyncio.gather) to sequential processing. A batch of 100 tasks that each take 1 second will now take 100 seconds instead of ~20 seconds (with semaphore of 5). This is a major performance regression.",
+        "explanation": "asyncio.gather runs all tasks concurrently (bounded by semaphore). The new sequential loop awaits each task one at a time, completely eliminating the concurrency benefit of async. The max_concurrent parameter is now unused dead code."
+      },
+      {
+        "line_number": 17,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed return_exceptions=True from asyncio.gather. In the new sequential code, if any task raises an exception, the entire batch aborts. Previously, exceptions were captured and returned alongside successful results.",
+        "explanation": "With return_exceptions=True, a failing task didn't prevent other tasks from completing. Now, one failing task out of 100 stops the remaining 99 from executing."
+      },
+      {
+        "line_number": 24,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed try/finally from _process_one. If execute_task raises an exception, task_id remains in self._running forever (never discarded), making the running set an inaccurate view of active tasks.",
+        "explanation": "The finally block ensured _running was cleaned up even on exception. Without it, _running grows with stale entries on every failure, causing memory leaks and incorrect monitoring."
+      }
+    ]
+  },
+  {
+    "id": "medium_010",
+    "difficulty": "medium",
+    "diff_text": "--- a/auth/token_manager.py\n+++ b/auth/token_manager.py\n@@ -5,19 +5,14 @@\n import hashlib\n import hmac\n import time\n-import secrets\n \n class TokenManager:\n-    def __init__(self, secret_key: str, token_ttl: int = 3600):\n-        self._secret = secret_key.encode()\n+    def __init__(self, secret_key: str, token_ttl: int = 86400):\n+        self._secret = secret_key\n         self._ttl = token_ttl\n \n     def generate_token(self, user_id: int) -> str:\n-        timestamp = int(time.time())\n-        nonce = secrets.token_hex(16)\n-        payload = f\"{user_id}:{timestamp}:{nonce}\"\n-        signature = hmac.new(self._secret, payload.encode(), hashlib.sha256).hexdigest()\n-        return f\"{payload}:{signature}\"\n+        payload = f\"{user_id}:{int(time.time())}\"\n+        signature = hashlib.sha256(f\"{payload}:{self._secret}\".encode()).hexdigest()\n+        return f\"{payload}:{signature}\"\n \n     def verify_token(self, token: str) -> int | None:\n         parts = token.rsplit(':', 1)\n@@ -25,8 +20,6 @@\n         if len(parts) != 2:\n             return None\n         payload, signature = parts\n-        expected = hmac.new(self._secret, payload.encode(), hashlib.sha256).hexdigest()\n-        if not hmac.compare_digest(signature, expected):\n+        expected = hashlib.sha256(f\"{payload}:{self._secret}\".encode()).hexdigest()\n+        if signature != expected:\n             return None\n-        _, timestamp, _ = payload.split(':')\n-        if int(time.time()) - int(timestamp) > self._ttl:\n-            return None\n-        user_id = payload.split(':')[0]\n+        user_id = payload.split(':')[0]\n         return int(user_id)",
+    "commit_message": "Simplify token management",
+    "pr_description": "Simplified the token generation and verification. Reduced unnecessary crypto complexity.",
+    "file_path": "auth/token_manager.py",
+    "file_context": "import hashlib\nimport hmac\nimport time\n\nclass TokenManager:\n    def __init__(self, secret_key: str, token_ttl: int = 86400):\n        self._secret = secret_key\n        self._ttl = token_ttl\n\n    def generate_token(self, user_id: int) -> str:\n        payload = f\"{user_id}:{int(time.time())}\"\n        signature = hashlib.sha256(f\"{payload}:{self._secret}\".encode()).hexdigest()\n        return f\"{payload}:{signature}\"\n\n    def verify_token(self, token: str) -> int | None:\n        parts = token.rsplit(':', 1)\n        if len(parts) != 2:\n            return None\n        payload, signature = parts\n        expected = hashlib.sha256(f\"{payload}:{self._secret}\".encode()).hexdigest()\n        if signature != expected:\n            return None\n        user_id = payload.split(':')[0]\n        return int(user_id)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 14,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Replaced HMAC with plain SHA-256 hash. HMAC is specifically designed for message authentication; plain hash concatenation is vulnerable to length extension attacks.",
+        "explanation": "hmac.new() provides a cryptographically secure MAC. hashlib.sha256(payload + secret) is vulnerable to length extension attacks where an attacker can forge valid signatures without knowing the secret."
+      },
+      {
+        "line_number": 24,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Replaced hmac.compare_digest with simple == comparison. This introduces a timing side-channel attack — an attacker can determine the correct signature byte-by-byte by measuring response times.",
+        "explanation": "hmac.compare_digest uses constant-time comparison to prevent timing attacks. Regular == short-circuits on the first differing byte, leaking information about the expected value."
+      },
+      {
+        "line_number": 13,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed nonce (secrets.token_hex) from token payload. Without a nonce, tokens for the same user_id generated in the same second are identical, enabling token prediction.",
+        "explanation": "The nonce made each token unique even for the same user at the same second. Without it, an attacker who knows user_id and approximate time can predict valid tokens."
+      },
+      {
+        "line_number": 26,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Removed token expiration check. Tokens never expire — once generated, they are valid forever. Token TTL parameter is now dead code.",
+        "explanation": "The original code checked if (now - timestamp) > ttl. Without this, stolen tokens remain valid indefinitely. The _ttl parameter still exists but does nothing, which is misleading."
+      }
+    ]
+  }
+]

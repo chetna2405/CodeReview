@@ -1,0 +1,23 @@
+{
+  "id": "scenario_007",
+  "source": {
+    "repo": "tiangolo/fastapi",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/inventory.py\n+++ b/inventory.py\n@@ -8,7 +8,7 @@\n def update_stock(pid, qty):\n     product = Product.get(pid)\n     if product is None:\n-        raise ProductNotFoundError(f'Product {pid} not found')\n+        return\n     product.stock += qty\n     product.save()\n     return True",
+  "commit_message": "Handle missing products gracefully",
+  "pr_description": "Avoids exception for missing products.",
+  "file_path": "inventory.py",
+  "file_context": "def update_stock(pid, qty):\n    product = Product.get(pid)\n    if product is None:\n        return\n    product.stock += qty\n    product.save()\n    return True",
+  "gold_annotations": [
+    {
+      "line": 11,
+      "type": "bug",
+      "severity": "major",
+      "issue": "Silent None return violates bool return type. Callers can't distinguish missing product from failure.",
+      "reference": ""
+    }
+  ]
+}

