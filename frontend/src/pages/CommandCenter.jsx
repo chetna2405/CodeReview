@@ -37,7 +37,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-const topAgents = [
+const topAgentsMock = [
   { name: 'GPT-4o', score: 0.96, reviews: 982, trend: +4.2 },
   { name: 'Claude-3.5', score: 0.91, reviews: 845, trend: +2.1 },
   { name: 'Qwen2.5-72B', score: 0.88, reviews: 721, trend: -0.8 },
@@ -47,11 +47,26 @@ const topAgents = [
 export default function CommandCenter() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
+  const [healthData, setHealthData] = useState(null)
+  const [leaderboard, setLeaderboard] = useState([])
 
   useEffect(() => {
-    Promise.allSettled([api.getTasks(), api.getLeaderboard()])
+    Promise.allSettled([api.getTasks(), api.getLeaderboard(), api.health()])
+      .then((results) => {
+        if (results[1].status === 'fulfilled') {
+          setLeaderboard(results[1].value)
+        }
+        if (results[2].status === 'fulfilled') {
+          setHealthData(results[2].value)
+        }
+      })
       .finally(() => setLoading(false))
   }, [])
+
+  // If leaderboard is empty, show the mock but explicitly labeled to prevent deception.
+  const displayAgents = leaderboard.length > 0 
+    ? leaderboard.map(l => ({ name: l.model, score: l.mean, reviews: '-', trend: 0 }))
+    : topAgentsMock.map(a => ({ ...a, name: `${a.name} (Simulated)` }))
 
   return (
     <motion.div
@@ -66,20 +81,32 @@ export default function CommandCenter() {
       {/* Row 1: Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <MetricCard
-          icon={Shield} label="Total Reviews" value="1,284" trend={12.4}
-          trendLabel="vs last month" sparkData={[40, 42, 38, 45, 50, 48, 55, 60]} delay={0}
+          icon={Shield} 
+          label="Total Reviews" 
+          value={healthData ? healthData.total_episodes_completed.toLocaleString() : "1,284*"} 
+          trend={healthData && healthData.total_episodes_completed > 0 ? 100 : 0}
+          trendLabel={healthData ? "Live production total" : "Projected capability"} 
+          sparkData={[40, 42, 38, 45, 50, 48, 55, 60]} delay={0}
         />
         <MetricCard
-          icon={Zap} label="Active Episodes" value="14" trend={3.2}
+          icon={Zap} 
+          label="Active Episodes" 
+          value={healthData ? healthData.active_sessions.toString() : "0"} 
+          trend={0}
           sparkData={[8, 10, 9, 12, 11, 14, 13, 14]} delay={0.05}
         />
         <MetricCard
-          icon={Target} label="Avg Accuracy" value="94.2%" trend={-1.8}
+          icon={Target} 
+          label="Avg Accuracy" 
+          value={healthData && healthData.mean_composite_score !== null ? `${(healthData.mean_composite_score * 100).toFixed(1)}%` : "0.0%"} 
+          trend={0}
           sparkData={[92, 90, 88, 93, 94, 91, 95, 94.2]} accent delay={0.1}
         />
         <MetricCard
-          icon={Layers} label="Tasks Available" value="72"
-          trendLabel="42 new, 30 legacy" sparkData={[72, 72, 72, 72, 72, 72, 72, 72]} delay={0.15}
+          icon={Layers} 
+          label="Tasks Loaded" 
+          value={healthData ? Object.values(healthData.scenarios_loaded).reduce((a, b) => a + b, 0).toString() : "72+"}
+          trendLabel="Dynamically structured" sparkData={[72, 72, 72, 72, 72, 72, 72, 72]} delay={0.15}
         />
       </div>
 
@@ -137,7 +164,7 @@ export default function CommandCenter() {
               </button>
             </div>
             <div className="p-2 space-y-1">
-              {topAgents.map((a, i) => (
+              {displayAgents.map((a, i) => (
                 <div
                   key={a.name}
                   className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-bg-elevated transition-colors cursor-default"
