@@ -193,6 +193,12 @@ step_semaphore = None
 async def startup_event():
     global step_semaphore
     step_semaphore = asyncio.Semaphore(MAX_CONCURRENT_STEPS)
+    # Warm the model on first startup, not at build time
+    try:
+        from server.grader import get_grader
+        _ = get_grader()
+    except Exception as e:
+        _log("warning", f"Failed to warm up grader at startup: {e}")
 
 # ─── Health endpoint ─────────────────────────────────────────────────────────
 

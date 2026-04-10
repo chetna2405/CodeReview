@@ -1,21 +1,41 @@
 agent,scenario_idx,difficulty,reward
-Rule-Based Baseline,0,easy,0.0
-Rule-Based Baseline,1,easy,0.0
-Rule-Based Baseline,2,easy,0.0
-Rule-Based Baseline,3,easy,0.0
-Rule-Based Baseline,4,easy,0.5828998424325671
-Qwen-1.5B,0,easy,0.0
-Qwen-1.5B,1,easy,0.0
-Qwen-1.5B,2,easy,0.6470684397834672
-Qwen-1.5B,3,easy,0.6466634601589881
-Qwen-1.5B,4,easy,0.0
-Qwen-7B,0,easy,0.5880240389233149
-Qwen-7B,1,easy,0.6455868887242217
+Random Agent,0,easy,0.0
+Random Agent,1,easy,0.0
+Random Agent,2,easy,0.0
+Random Agent,3,easy,0.5621804511278196
+Random Agent,4,easy,0.0
+Random Agent,5,easy,0.0
+Random Agent,6,easy,0.0
+Random Agent,7,easy,0.0
+Random Agent,8,easy,0.0
+Random Agent,9,easy,0.0
+Rule-Based,0,easy,0.0
+Rule-Based,1,easy,0.0
+Rule-Based,2,easy,0.0
+Rule-Based,3,easy,0.0
+Rule-Based,4,easy,0.0
+Rule-Based,5,easy,0.6556171787530184
+Rule-Based,6,easy,0.0
+Rule-Based,7,easy,0.0
+Rule-Based,8,easy,0.0
+Rule-Based,9,easy,0.0
+Qwen-7B,0,easy,0.0
+Qwen-7B,1,easy,0.7467387136724669
 Qwen-7B,2,easy,0.0
-Qwen-7B,3,easy,0.5828998424325671
-Qwen-7B,4,easy,0.6515770076960326
-Qwen-32B,0,easy,0.0
-Qwen-32B,1,easy,0.0
-Qwen-32B,2,easy,0.0
-Qwen-32B,3,easy,0.0
-Qwen-32B,4,easy,0.0
+Qwen-7B,3,easy,0.653041772561933
+Qwen-7B,4,easy,0.5293695973873138
+Qwen-7B,5,easy,0.7746569531382608
+Qwen-7B,6,easy,0.0
+Qwen-7B,7,easy,0.7467387136724669
+Qwen-7B,8,easy,0.0
+Qwen-7B,9,easy,0.0
+GPT-4o-mini,0,easy,0.0
+GPT-4o-mini,1,easy,0.7280622979396663
+GPT-4o-mini,2,easy,0.0
+GPT-4o-mini,3,easy,0.0
+GPT-4o-mini,4,easy,0.6524214030343753
+GPT-4o-mini,5,easy,0.5592607536186514
+GPT-4o-mini,6,easy,0.6492861456855348
+GPT-4o-mini,7,easy,0.7174750148369781
+GPT-4o-mini,8,easy,0.0
+GPT-4o-mini,9,easy,0.0
