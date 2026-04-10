@@ -23,7 +23,8 @@ import uvicorn
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 
@@ -186,10 +187,7 @@ LANDING_PAGE = """<!DOCTYPE html>
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
-async def landing_page():
-    """Serve the CodeReviewEnv landing page."""
-    return LANDING_PAGE
+# The landing page will now conditionally serve the React frontend at the bottom of the file
 
 
 @app.get("/tasks")
@@ -410,6 +408,29 @@ async def run_baseline(req: BaselineRequest):
         "leaderboard_path": str(LEADERBOARD_PATH),
         "note": "Scores reflect public scenario set only.",
     }
+
+
+# ─── Frontend Serving ────────────────────────────────────────────────────────
+
+frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+
+if frontend_dist.exists() and (frontend_dist / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    @app.get("/{catchall:path}")
+    async def serve_react_app(catchall: str):
+        if catchall and catchall.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        
+        file_path = frontend_dist / catchall
+        if catchall and file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+            
+        return FileResponse(frontend_dist / "index.html")
+else:
+    @app.get("/", response_class=HTMLResponse)
+    async def landing_page():
+        return LANDING_PAGE
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────

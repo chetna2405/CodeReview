@@ -1,5 +1,15 @@
-FROM python:3.11-slim
+# Stage 1: Build Frontend
+FROM node:20 AS frontend-builder
+WORKDIR /app/frontend
+# Ensure package.json exists to install deps
+COPY frontend/package*.json ./
+RUN npm install
+# Copy rest of frontend files and build
+COPY frontend/ ./
+RUN npm run build
 
+# Stage 2: Serve Backend
+FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
@@ -13,6 +23,9 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 
 # Copy application code
 COPY . /app/
+
+# Copy the built frontend from stage 1 over to the backend container
+COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
 # Create outputs directory
 RUN mkdir -p /app/outputs/logs /app/outputs/evals
