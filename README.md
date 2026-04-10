@@ -9,17 +9,6 @@ license: mit
 app_port: 8000
 ---
 
----
-title: CodeReviewEnv
-emoji: 🔍
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_file: server/app.py
-app_port: 8000
-pinned: false
----
-
 # CodeReviewEnv 🔍
 
 **An OpenEnv-compliant environment for AI code review benchmarking.**
