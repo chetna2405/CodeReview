@@ -1,4 +1,4 @@
----
+﻿---
 title: CodeReviewEnv
 emoji: "🔍"
 colorFrom: blue
@@ -370,5 +370,3 @@ A random-flag agent scores ~0.08, confirming exploit-resistance.
 ## 📜 License
 
 MIT License — built for the Scaler × Meta × PyTorch Hackathon 2026.
-#   C o d e R e v i e w E n v i r o n m e n t  
- 
