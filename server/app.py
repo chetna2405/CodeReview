@@ -284,9 +284,14 @@ async def rest_reset(req: ResetRequest, request: Request):
 async def rest_step(req: StepRequest, request: Request):
     """Execute action on episode and get next observation."""
     if step_semaphore is not None and step_semaphore.locked():
-        raise HTTPException(
-            status_code=503, 
-            detail="Server at capacity. Thread pool saturated. Please retry later."
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "server_at_capacity", 
+                "message": "Thread pool saturated. Please retry later.",
+                "retry_after_seconds": 2
+            },
+            headers={"Retry-After": "2"}
         )
     global _episodes_completed
 
