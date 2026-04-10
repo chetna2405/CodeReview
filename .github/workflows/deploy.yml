@@ -11,10 +11,11 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: Push to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add space https://huggingface.co/spaces/chetna1910/CodeReview
-          git push --force space main
+          git push --force https://chetna1910:$HF_TOKEN@huggingface.co/spaces/chetna1910/CodeReview HEAD:main
