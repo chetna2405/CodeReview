@@ -2,13 +2,14 @@
 FastAPI application for CodeReviewEnv.
 
 Endpoints:
-  GET  /              Landing page
-  GET  /health        Health check
+  GET  /              Landing page (or React frontend if built)
+  GET  /health        Health check with metrics
   GET  /tasks         List available tasks (public only)
   POST /api/reset     Start a new episode
-  POST /api/step      Execute a review action
+  POST /api/step      Execute a review action (with input validation)
   GET  /api/state     Current episode state
   GET  /api/context   Fetch repo file context (costs 1 turn)
+  GET  /api/replay/{episode_id}  Turn-by-turn replay
   GET  /grader        Grader results for completed episode
   GET  /leaderboard   All baseline runs sorted by mean score
   POST /baseline      Run baseline and append to leaderboard
@@ -17,7 +18,7 @@ Endpoints:
 import os
 import sys
 import json
-import time
+import time as _time
 import datetime
 import uvicorn
 from pathlib import Path
@@ -26,16 +27,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 try:
     from openenv.core.env_server.http_server import create_app
-    from server.code_review_environment import CodeReviewEnvironment
+    from server.code_review_environment import CodeReviewEnvironment, TASK_CONFIG, _get_scenarios
     from models import ReviewAction, DiffObservation
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from openenv.core.env_server.http_server import create_app
-    from server.code_review_environment import CodeReviewEnvironment
+    from server.code_review_environment import CodeReviewEnvironment, TASK_CONFIG, _get_scenarios
     from models import ReviewAction, DiffObservation
 
 
@@ -59,6 +60,19 @@ app.add_middleware(
 _env_instance = CodeReviewEnvironment()
 
 LEADERBOARD_PATH = Path(__file__).parent.parent / "leaderboard.json"
+
+
+# ─── Metrics counters (B5) ───────────────────────────────────────────────────
+
+_start_time: float = _time.time()
+_episodes_started: int = 0
+_episodes_completed: int = 0
+_composite_scores: List[float] = []
+
+
+# ─── Replay store (B3) ──────────────────────────────────────────────────────
+
+_replay_store: dict[str, list[dict]] = {}
 
 
 # ─── Leaderboard helpers ─────────────────────────────────────────────────────
@@ -171,6 +185,7 @@ LANDING_PAGE = """<!DOCTYPE html>
     <div class="endpoint"><span class="method post">POST</span><span class="path">/api/step</span><span class="desc">Execute add_comment / retract / clarify / finalize</span></div>
     <div class="endpoint"><span class="method get">GET</span><span class="path"><a href="/api/state">/api/state</a></span><span class="desc">Current episode state</span></div>
     <div class="endpoint"><span class="method get">GET</span><span class="path">/api/context</span><span class="desc">Fetch repo file context (costs 1 turn)</span></div>
+    <div class="endpoint"><span class="method get">GET</span><span class="path">/api/replay/{episode_id}</span><span class="desc">Turn-by-turn episode replay</span></div>
     <div class="endpoint"><span class="method get">GET</span><span class="path"><a href="/grader">/grader</a></span><span class="desc">Grader results for completed episode</span></div>
     <div class="endpoint"><span class="method get">GET</span><span class="path"><a href="/leaderboard">/leaderboard</a></span><span class="desc">All baseline runs sorted by mean score</span></div>
     <div class="endpoint"><span class="method post">POST</span><span class="path">/baseline</span><span class="desc">Run baseline &amp; persist to leaderboard</span></div>
@@ -187,7 +202,18 @@ LANDING_PAGE = """<!DOCTYPE html>
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
-# The landing page will now conditionally serve the React frontend at the bottom of the file
+@app.get("/health")
+async def health_check():
+    """Rich health endpoint with uptime, episode counts, and scenario stats."""
+    return {
+        "status": "ok",
+        "uptime_seconds": round(_time.time() - _start_time, 1),
+        "total_episodes_started": _episodes_started,
+        "total_episodes_completed": _episodes_completed,
+        "mean_composite_score": round(sum(_composite_scores) / len(_composite_scores), 4) if _composite_scores else None,
+        "scenarios_loaded": {task_id: len(_get_scenarios(task_id)) for task_id in TASK_CONFIG},
+        "hf_token_present": bool(os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")),
+    }
 
 
 @app.get("/tasks")
@@ -249,18 +275,44 @@ class BaselineRequest(BaseModel):
 @app.post("/api/reset")
 async def rest_reset(req: ResetRequest):
     """REST endpoint to start a new episode."""
+    global _episodes_started
+    _episodes_started += 1
+
     obs = _env_instance.reset(
         task_id=req.task_id,
         scenario_id=req.scenario_id,
         seed=req.seed,
         episode_id=req.episode_id,
     )
-    return obs.model_dump()
+    obs_dict = obs.model_dump()
+
+    # Initialize replay store for this episode (B3)
+    episode_id = obs_dict.get("metadata", {}).get("episode_id", "")
+    if episode_id:
+        _replay_store[episode_id] = []
+
+    return obs_dict
 
 
 @app.post("/api/step")
 async def rest_step(req: StepRequest):
-    """REST endpoint to execute an action (add_comment, retract_comment, request_clarification, finalize_review, approve, request_changes)."""
+    """REST endpoint to execute an action with input validation (B6)."""
+    global _episodes_completed
+
+    # ── Input validation (B6) ──────────────────────────────────────────────
+    if req.action_type == "add_comment":
+        errors: List[str] = []
+        if req.line_number is None or req.line_number < 1:
+            errors.append("line_number must be >= 1")
+        if req.severity not in (None, "minor", "major", "critical", "nit"):
+            errors.append(f"severity must be one of: minor, major, critical, nit. Got: {req.severity}")
+        if not req.message or not req.message.strip():
+            errors.append("message must not be empty")
+        elif len(req.message) > 500:
+            errors.append("message must be <= 500 characters")
+        if errors:
+            raise HTTPException(status_code=422, detail={"errors": errors})
+
     action = ReviewAction(
         action_type=req.action_type,
         line_number=req.line_number,
@@ -271,7 +323,41 @@ async def rest_step(req: StepRequest):
         reason=req.reason,
     )
     obs = _env_instance.step(action)
-    return obs.model_dump()
+    obs_dict = obs.model_dump()
+
+    # ── Record replay turn (B3) ───────────────────────────────────────────
+    episode_id = obs_dict.get("metadata", {}).get("episode_id", "")
+    if episode_id and episode_id in _replay_store:
+        author_responses = obs_dict.get("author_responses", [])
+        _replay_store[episode_id].append({
+            "turn": obs_dict.get("step_num", 0),
+            "action_type": req.action_type,
+            "line_number": req.line_number,
+            "severity": req.severity,
+            "message": req.message,
+            "author_response": author_responses[-1] if author_responses else None,
+            "reward": obs_dict.get("reward", 0.0),
+            "is_done": obs_dict.get("done", False),
+        })
+
+    # ── Track metrics (B5) ───────────────────────────────────────────────
+    if obs_dict.get("done"):
+        _episodes_completed += 1
+        reward = obs_dict.get("reward", 0.0)
+        _composite_scores.append(reward)
+
+    return obs_dict
+
+
+@app.get("/api/replay/{episode_id}")
+async def get_replay(episode_id: str):
+    """Return turn-by-turn replay for a completed or active episode (B3)."""
+    if episode_id not in _replay_store:
+        raise HTTPException(status_code=404, detail=f"Episode '{episode_id}' not found.")
+    return {
+        "episode_id": episode_id,
+        "turns": _replay_store[episode_id],
+    }
 
 
 @app.get("/api/state")
@@ -341,7 +427,7 @@ async def run_baseline(req: BaselineRequest):
     env = CodeReviewEnvironment()
     tasks = list(TASK_CONFIG.keys())
     scores = {}
-    category_scores = {"security": [], "logic": [], "style": [], "cross_file": []}
+    category_scores: dict[str, list] = {"security": [], "logic": [], "style": [], "cross_file": []}
 
     for task_id in tasks:
         obs = env.reset(task_id=task_id, seed=req.seed)
@@ -415,11 +501,15 @@ async def run_baseline(req: BaselineRequest):
 frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 
 if frontend_dist.exists() and (frontend_dist / "index.html").exists():
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    # Mount static assets
+    assets_dir = frontend_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
     
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
-        if catchall and catchall.startswith("api/"):
+        # Don't catch API routes
+        if catchall and (catchall.startswith("api/") or catchall in ("health", "tasks", "grader", "leaderboard", "baseline")):
             raise HTTPException(status_code=404, detail="API route not found")
         
         file_path = frontend_dist / catchall

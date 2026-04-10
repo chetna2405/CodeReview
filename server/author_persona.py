@@ -2,12 +2,14 @@
 Author persona module for CodeReviewEnv.
 
 Allows simulating different types of PR authors (defensive, collaborative, dismissive)
-that respond to agent comments via an LLM.
+that respond to agent comments via an LLM (Mistral-7B-Instruct-v0.3 on HF Inference API).
+
+Falls back silently to hardcoded responses on any error or missing token.
 """
 
 import os
 import random
-from typing import Literal
+from typing import Literal, Optional
 
 PersonaType = Literal["defensive", "collaborative", "dismissive"]
 
@@ -53,40 +55,86 @@ _SYSTEM_PROMPTS = {
     )
 }
 
+HF_INFERENCE_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3"
+
+
+def _fallback_response(persona: str) -> str:
+    """Return a random canned response for the given persona."""
+    return random.choice(_FALLBACK_RESPONSES.get(persona, _FALLBACK_RESPONSES["defensive"]))
+
+
 def generate_author_response(
     persona: PersonaType,
     comment_message: str,
     is_true_positive: bool = False,
-    hf_token: str = None
+    hf_token: Optional[str] = None
 ) -> str:
     """
     Generate an author response to an agent's comment.
     
-    Uses HuggingFace Inference API if a token is provided, otherwise falls back
-    to canned responses.
+    Uses HuggingFace Inference API (Mistral-7B-Instruct-v0.3) via httpx if a token
+    is provided, otherwise falls back to canned responses.
+
+    Args:
+        persona: Author personality type.
+        comment_message: The agent's comment text.
+        is_true_positive: Whether the agent's comment is actually correct.
+        hf_token: HuggingFace API token (also checked from env vars).
+
+    Returns:
+        Author's response string.
     """
-    if not hf_token:
-        # Fallback
-        return random.choice(_FALLBACK_RESPONSES.get(persona, _FALLBACK_RESPONSES["defensive"]))
+    # Resolve token
+    token = hf_token or os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    if not token:
+        return _fallback_response(persona)
 
     try:
-        from huggingface_hub import InferenceClient
-        client = InferenceClient(
-            model="meta-llama/Llama-3.1-8B-Instruct",
-            token=hf_token,
-        )
+        import httpx
 
         sys_prompt = _SYSTEM_PROMPTS.get(persona, _SYSTEM_PROMPTS["defensive"])
-        context_hint = "The AI code review agent points out a legitimate bug." if is_true_positive else "The AI code review agent points out an issue."
-        
-        prompt = f"{sys_prompt}\n\nContext: {context_hint}\nAI Agent Comment: \"{comment_message}\"\n\nYour response as the author:"
-
-        response = client.text_generation(
-            prompt,
-            max_new_tokens=60,
-            temperature=0.7,
+        context_hint = (
+            "The AI code review agent points out a legitimate bug."
+            if is_true_positive
+            else "The AI code review agent points out a potential issue that may or may not be valid."
         )
-        return response.strip().strip('"')
+
+        prompt = (
+            f"<s>[INST] {sys_prompt}\n\n"
+            f"Context: {context_hint}\n"
+            f"AI Agent Comment: \"{comment_message}\"\n\n"
+            f"Your response as the PR author: [/INST]"
+        )
+
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 60,
+                "temperature": 0.7,
+                "return_full_text": False,
+            },
+        }
+
+        with httpx.Client(timeout=15.0) as client:
+            resp = client.post(
+                HF_INFERENCE_URL,
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        # Parse response — HF returns list of {generated_text: ...}
+        if isinstance(data, list) and data:
+            text = data[0].get("generated_text", "").strip().strip('"')
+            if text:
+                return text
+
+        return _fallback_response(persona)
+
     except Exception as e:
         print(f"Warning: LLM author persona generation failed: {e}")
-        return random.choice(_FALLBACK_RESPONSES.get(persona, _FALLBACK_RESPONSES["defensive"]))
+        return _fallback_response(persona)

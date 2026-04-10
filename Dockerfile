@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY server/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
+# Cache sentence-transformers model weights during build (B7)
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+
 # Copy application code
 COPY . /app/
 

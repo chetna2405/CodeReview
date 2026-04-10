@@ -1,3 +1,4 @@
+import { useState, createContext, useContext } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { AnimatePresence } from 'framer-motion'
 import AppLayout from './components/layout/AppLayout'
@@ -5,18 +6,37 @@ import CommandCenter from './pages/CommandCenter'
 import AgentNetwork from './pages/AgentNetwork'
 import IntelReview from './pages/IntelReview'
 import MissionMetrics from './pages/MissionMetrics'
+import SettingsPage from './pages/SettingsPage'
+import GraderPage from './pages/GraderPage'
+import ReplayPage from './pages/ReplayPage'
+
+// Shared settings context
+const SettingsContext = createContext()
+export const useSettings = () => useContext(SettingsContext)
 
 export default function App() {
+  const [settings, setSettings] = useState({
+    taskId: 'simple_review',
+    seed: 42,
+    modelLabel: 'rule-based',
+    episodeId: null,
+  })
+
   return (
-    <AppLayout>
-      <AnimatePresence mode="wait">
-        <Routes>
-          <Route path="/" element={<CommandCenter />} />
-          <Route path="/new-review" element={<AgentNetwork />} />
-          <Route path="/review" element={<IntelReview />} />
-          <Route path="/metrics" element={<MissionMetrics />} />
-        </Routes>
-      </AnimatePresence>
-    </AppLayout>
+    <SettingsContext.Provider value={{ settings, setSettings }}>
+      <AppLayout>
+        <AnimatePresence mode="wait">
+          <Routes>
+            <Route path="/" element={<CommandCenter />} />
+            <Route path="/new-review" element={<AgentNetwork />} />
+            <Route path="/review" element={<IntelReview />} />
+            <Route path="/metrics" element={<MissionMetrics />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/grader" element={<GraderPage />} />
+            <Route path="/replay" element={<ReplayPage />} />
+          </Routes>
+        </AnimatePresence>
+      </AppLayout>
+    </SettingsContext.Provider>
   )
 }

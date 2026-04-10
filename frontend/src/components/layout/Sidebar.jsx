@@ -1,7 +1,8 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Crosshair, Shield, BarChart3, Settings, ChevronLeft, ChevronRight
+  LayoutDashboard, Crosshair, Shield, BarChart3, Settings, ChevronLeft, ChevronRight,
+  Award, Play
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -9,6 +10,8 @@ const navItems = [
   { path: '/', label: 'Overview', icon: LayoutDashboard },
   { path: '/new-review', label: 'Deploy Agent', icon: Crosshair },
   { path: '/review', label: 'Active Ops', icon: Shield },
+  { path: '/grader', label: 'Grader', icon: Award },
+  { path: '/replay', label: 'Replay', icon: Play },
   { path: '/metrics', label: 'Intelligence', icon: BarChart3 },
 ]
 
@@ -87,9 +90,10 @@ export default function Sidebar({ collapsed, onToggle }) {
       <div className="px-3 pb-6 flex flex-col gap-2">
         <NavLink
           to="/settings"
-          className={cn(
-            'flex items-center px-3 py-2.5 rounded-xl text-[13px] font-medium text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-all border border-transparent',
-            collapsed ? 'justify-center' : 'gap-3'
+          className={({ isActive }) => cn(
+            'flex items-center px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all border',
+            collapsed ? 'justify-center' : 'gap-3',
+            isActive ? 'text-text-primary bg-bg-secondary border-subtle' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-transparent',
           )}
           title={collapsed ? "Settings" : undefined}
         >

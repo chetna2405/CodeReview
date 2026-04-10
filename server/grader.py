@@ -2,20 +2,21 @@
 Grader module for CodeReviewEnv.
 
 Evaluates agent performance using a multi-signal composite score:
-  - Issue Detection F1 (50%): precision + recall of flagged issues vs gold annotations
-  - Severity Accuracy (30%): ordinal severity penalty for detected issues
-  - Comment Quality (20%): semantic similarity of agent comments vs gold descriptions
+  - Issue Detection F1 (45%): precision + recall of flagged issues vs gold annotations
+  - Severity Accuracy (25%): ordinal severity penalty for detected issues
+  - Comment Quality (15%): word overlap + n-gram similarity of comments vs gold descriptions
+  - Message Quality (15%): cosine similarity via sentence-transformers (all-MiniLM-L6-v2)
 
-Weights: 0.5 * F1 + 0.3 * severity_acc + 0.2 * comment_quality
+Weights: 0.45 * F1 + 0.25 * severity_acc + 0.15 * comment_quality + 0.15 * message_quality
 
-All components are deterministic (fixed scoring logic, no models required).
+Falls back gracefully if sentence-transformers is unavailable.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Any
 
 
 # ─── Severity ────────────────────────────────────────────────────────────────
@@ -95,12 +96,59 @@ def _ordinal_severity_score(agent_sev: str, gold_sev: str) -> float:
 
 # ─── Weights ─────────────────────────────────────────────────────────────────
 
-W_F1 = 0.50
-W_SEVERITY = 0.30
-W_COMMENT = 0.20
+W_F1 = 0.45
+W_SEVERITY = 0.25
+W_COMMENT = 0.15
+W_SEMANTIC = 0.15
 
 # Line number tolerance for matching agent comments to gold annotations
 LINE_TOLERANCE = 3
+
+
+# ─── Sentence-transformers lazy singleton ────────────────────────────────────
+
+_st_model: Optional[Any] = None
+_st_available: Optional[bool] = None
+
+
+def _get_st_model() -> Optional[Any]:
+    """Lazy-load the sentence-transformers model. Returns None if unavailable."""
+    global _st_model, _st_available
+    if _st_available is False:
+        return None
+    if _st_model is not None:
+        return _st_model
+    try:
+        from sentence_transformers import SentenceTransformer
+        _st_model = SentenceTransformer("all-MiniLM-L6-v2")
+        _st_available = True
+        return _st_model
+    except Exception:
+        _st_available = False
+        return None
+
+
+def _compute_cosine_similarity(texts_a: List[str], texts_b: List[str]) -> List[float]:
+    """Compute pairwise cosine similarity using sentence-transformers."""
+    model = _get_st_model()
+    if model is None or not texts_a or not texts_b:
+        return []
+    try:
+        import numpy as np
+        emb_a = model.encode(texts_a, convert_to_numpy=True)
+        emb_b = model.encode(texts_b, convert_to_numpy=True)
+        # Pairwise cosine similarity
+        sims: List[float] = []
+        for a, b in zip(emb_a, emb_b):
+            norm_a = np.linalg.norm(a)
+            norm_b = np.linalg.norm(b)
+            if norm_a == 0 or norm_b == 0:
+                sims.append(0.0)
+            else:
+                sims.append(float(np.dot(a, b) / (norm_a * norm_b)))
+        return sims
+    except Exception:
+        return []
 
 
 # ─── Similarity helpers ───────────────────────────────────────────────────────
@@ -129,7 +177,7 @@ def _compute_ngram_similarity(text_a: str, text_b: str, n: int = 2) -> float:
     if not text_a or not text_b:
         return 0.0
 
-    def ngrams(text: str, n: int):
+    def ngrams(text: str, n: int) -> set[str]:
         text = text.lower().strip()
         return set(text[i : i + n] for i in range(len(text) - n + 1))
 
@@ -179,8 +227,8 @@ def _match_comments_to_annotations(
                 candidates.append((ci, ai, distance))
 
     candidates.sort(key=lambda x: x[2])
-    matched_comments: set = set()
-    matched_annotations: set = set()
+    matched_comments: set[int] = set()
+    matched_annotations: set[int] = set()
     matches: List[Tuple[int, int, int]] = []
 
     for ci, ai, dist in candidates:
@@ -203,6 +251,7 @@ class GraderResult:
     recall: float = 0.0
     severity_accuracy: float = 0.0
     comment_similarity: float = 0.0
+    message_quality_score: float = 0.0
     issues_found: int = 0
     issues_total: int = 0
     false_positives: int = 0
@@ -215,12 +264,12 @@ def grade_episode(
     agent_comments: List[dict],
     gold_annotations: List[dict],
     final_verdict: str = "approve",
-    scenario: dict = None,
+    scenario: dict | None = None,
 ) -> GraderResult:
     """
     Grade a completed code review episode.
 
-    Formula: 0.5 * F1 + 0.3 * severity_acc + 0.2 * comment_quality
+    Formula: 0.45 * F1 + 0.25 * severity_acc + 0.15 * comment_quality + 0.15 * message_quality
 
     Args:
         agent_comments: List of dicts with keys: line_number, severity, message.
@@ -234,7 +283,7 @@ def grade_episode(
     result = GraderResult()
     is_cross_file = scenario is not None and scenario.get("cross_file", False)
     # Normalize gold annotation field names (support both old and new format)
-    normalized_gold = []
+    normalized_gold: List[dict] = []
     for ann in gold_annotations:
         normalized_gold.append({
             "line_number": ann.get("line_number", ann.get("line", 0)),
@@ -248,7 +297,7 @@ def grade_episode(
     if is_cross_file:
         result.issues_total = 1
         causal_desc = ""
-        files_involved = set()
+        files_involved: set[str] = set()
         for ann in normalized_gold:
             if ann.get("file"): files_involved.add(ann["file"])
             if ann.get("causal_chain"):
@@ -281,6 +330,8 @@ def grade_episode(
         result.f1_score = result.composite_score
         result.severity_accuracy = result.composite_score
         result.comment_similarity = result.composite_score
+        result.message_quality_score = result.composite_score
+        assert 0.0 <= result.composite_score <= 1.0
         return result
 
     result.issues_total = len(normalized_gold)
@@ -292,12 +343,15 @@ def grade_episode(
             result.f1_score = 1.0
             result.severity_accuracy = 1.0
             result.comment_similarity = 1.0
+            result.message_quality_score = 1.0
         else:
             result.composite_score = 0.5  # Unnecessary request_changes
+        assert 0.0 <= result.composite_score <= 1.0
         return result
 
     if not agent_comments:
         result.composite_score = 0.0
+        assert 0.0 <= result.composite_score <= 1.0
         return result
 
     # 1. Match agent comments to gold annotations
@@ -324,7 +378,7 @@ def grade_episode(
 
     # 3. Severity Accuracy — ordinal penalty (off-by-one = 0.67, etc.)
     if true_positives > 0:
-        severity_scores = []
+        severity_scores: List[float] = []
         for ci, ai, _ in matches:
             agent_sev = agent_comments[ci].get("severity", "major")
             gold_sev = normalized_gold[ai].get("severity", "major")
@@ -333,9 +387,9 @@ def grade_episode(
     else:
         result.severity_accuracy = 0.0
 
-    # 4. Comment Quality — semantic similarity for matched issues
+    # 4. Comment Quality — word overlap + n-gram similarity for matched issues
     if true_positives > 0:
-        similarities = []
+        similarities: List[float] = []
         for ci, ai, _ in matches:
             agent_msg = agent_comments[ci].get("message", "")
             gold_desc = normalized_gold[ai].get("description", "")
@@ -344,13 +398,33 @@ def grade_episode(
     else:
         result.comment_similarity = 0.0
 
-    # 5. Composite Score: 0.5*F1 + 0.3*severity_acc + 0.2*comment_quality
+    # 5. Message Quality — cosine similarity via sentence-transformers
+    if true_positives > 0:
+        agent_msgs: List[str] = []
+        gold_descs: List[str] = []
+        for ci, ai, _ in matches:
+            agent_msgs.append(agent_comments[ci].get("message", ""))
+            gold_descs.append(normalized_gold[ai].get("description", ""))
+        
+        cosine_sims = _compute_cosine_similarity(agent_msgs, gold_descs)
+        if cosine_sims:
+            # Clamp individual similarities to [0, 1]
+            result.message_quality_score = sum(max(0.0, min(1.0, s)) for s in cosine_sims) / len(cosine_sims)
+        else:
+            # Fallback: use comment_similarity as proxy
+            result.message_quality_score = result.comment_similarity
+    else:
+        result.message_quality_score = 0.0
+
+    # 6. Composite Score: 0.45*F1 + 0.25*severity_acc + 0.15*comment_quality + 0.15*message_quality
     result.composite_score = (
         W_F1 * result.f1_score
         + W_SEVERITY * result.severity_accuracy
         + W_COMMENT * result.comment_similarity
+        + W_SEMANTIC * result.message_quality_score
     )
     result.composite_score = max(0.0, min(1.0, result.composite_score))
+    assert 0.0 <= result.composite_score <= 1.0
 
     result.details = {
         "true_positives": true_positives,
@@ -390,4 +464,6 @@ def compute_partial_reward(
     recall = tp / len(normalized)
     if precision + recall == 0:
         return 0.0
-    return 2 * precision * recall / (precision + recall)
+    reward = 2 * precision * recall / (precision + recall)
+    assert 0.0 <= reward <= 1.0
+    return reward

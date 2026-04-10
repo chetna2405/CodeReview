@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy, TrendingUp, TrendingDown, Target, Zap, ShieldCheck, BarChart3, Award } from 'lucide-react'
+import { Trophy, TrendingUp, TrendingDown, Target, Zap, ShieldCheck, BarChart3, Award, RefreshCw, Play } from 'lucide-react'
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  AreaChart, Area,
 } from 'recharts'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
@@ -23,11 +22,57 @@ const Tip = ({ active, payload, label }) => {
 export default function MissionMetrics() {
   const [leaderboard, setLeaderboard] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [baselineLoading, setBaselineLoading] = useState(false)
+  const [sortKey, setSortKey] = useState('mean')
+  const [sortAsc, setSortAsc] = useState(false)
 
-  useEffect(() => { api.getLeaderboard().then(setLeaderboard).catch(() => {}).finally(() => setLoading(false)) }, [])
+  const fetchLeaderboard = useCallback(() => {
+    api.getLeaderboard().then(setLeaderboard).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    fetchLeaderboard()
+    const id = setInterval(fetchLeaderboard, 30000)
+    return () => clearInterval(id)
+  }, [fetchLeaderboard])
+
+  const handleRunBaseline = async () => {
+    setBaselineLoading(true)
+    try {
+      await api.runBaseline({ model: 'rule-based', seed: 42 })
+      await fetchLeaderboard()
+    } catch (e) {
+      console.error('Baseline failed:', e)
+    }
+    setBaselineLoading(false)
+  }
+
+  const handleSort = (key) => {
+    if (sortKey === key) {
+      setSortAsc(!sortAsc)
+    } else {
+      setSortKey(key)
+      setSortAsc(false)
+    }
+  }
 
   const runs = leaderboard?.runs || []
   const topRun = runs[0]
+
+  // Sort runs
+  const sortedRuns = [...runs].sort((a, b) => {
+    let va, vb
+    if (sortKey === 'mean') { va = a.mean || 0; vb = b.mean || 0 }
+    else if (sortKey === 'model') { va = a.model || ''; vb = b.model || '' }
+    else if (sortKey === 'security') { va = a.category_scores?.security || 0; vb = b.category_scores?.security || 0 }
+    else if (sortKey === 'logic') { va = a.category_scores?.logic || 0; vb = b.category_scores?.logic || 0 }
+    else if (sortKey === 'style') { va = a.category_scores?.style || 0; vb = b.category_scores?.style || 0 }
+    else if (sortKey === 'cross_file') { va = a.category_scores?.cross_file || 0; vb = b.category_scores?.cross_file || 0 }
+    else if (sortKey === 'timestamp') { va = a.timestamp || ''; vb = b.timestamp || '' }
+    else { va = 0; vb = 0 }
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va)
+    return sortAsc ? va - vb : vb - va
+  })
 
   const barData = runs.slice(0, 6).map(r => ({
     model: r.model?.split('-').slice(0, 2).join('-') || '?',
@@ -42,11 +87,36 @@ export default function MissionMetrics() {
 
   if (loading) return <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="skeleton h-16 rounded-xl" />)}</div>
 
+  const SortHeader = ({ label, field, className: cls }) => (
+    <th
+      className={cn("cursor-pointer hover:text-text-primary select-none transition-colors", cls)}
+      onClick={() => handleSort(field)}
+    >
+      <span className="flex items-center gap-1">
+        {label}
+        {sortKey === field && <span className="text-accent">{sortAsc ? '↑' : '↓'}</span>}
+      </span>
+    </th>
+  )
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-text-primary">Intelligence Report</h1>
-        <p className="text-sm text-text-muted mt-1">Performance analytics and model benchmarks.</p>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-text-primary">Intelligence Report</h1>
+          <p className="text-sm text-text-muted mt-1">Performance analytics and model benchmarks.</p>
+        </div>
+        <button
+          onClick={handleRunBaseline}
+          disabled={baselineLoading}
+          className="btn-primary flex items-center gap-2"
+        >
+          {baselineLoading ? (
+            <><RefreshCw className="w-4 h-4 animate-spin" /> Running...</>
+          ) : (
+            <><Play className="w-4 h-4" /> Run Baseline</>
+          )}
+        </button>
       </div>
 
       {/* Stats */}
@@ -111,25 +181,30 @@ export default function MissionMetrics() {
         </motion.div>
       </div>
 
-      {/* Leaderboard */}
+      {/* Sortable Leaderboard Table */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="surface-card overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-accent-border">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-accent" />
             <h3 className="text-[13px] font-semibold text-text-primary">Leaderboard</h3>
           </div>
-          <span className="text-[11px] text-text-dim">{runs.length} runs</span>
+          <span className="text-[11px] text-text-dim">{runs.length} runs · auto-refreshes every 30s</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead><tr className="text-[10px] text-text-dim uppercase tracking-[0.12em] border-b border-accent-border/50">
-              <th className="text-left px-5 py-2.5">Rank</th><th className="text-left px-4 py-2.5">Model</th>
-              <th className="text-right px-4 py-2.5">Mean</th><th className="text-right px-4 py-2.5 hidden md:table-cell">Simple</th>
-              <th className="text-right px-4 py-2.5 hidden md:table-cell">Logic</th><th className="text-right px-4 py-2.5 hidden md:table-cell">Security</th>
-              <th className="text-right px-5 py-2.5">Delta</th>
+              <th className="text-left px-5 py-2.5">Rank</th>
+              <SortHeader label="Model" field="model" className="text-left px-4 py-2.5" />
+              <SortHeader label="Mean" field="mean" className="text-right px-4 py-2.5" />
+              <SortHeader label="Security" field="security" className="text-right px-4 py-2.5 hidden md:table-cell" />
+              <SortHeader label="Logic" field="logic" className="text-right px-4 py-2.5 hidden md:table-cell" />
+              <SortHeader label="Style" field="style" className="text-right px-4 py-2.5 hidden md:table-cell" />
+              <SortHeader label="Cross-file" field="cross_file" className="text-right px-4 py-2.5 hidden lg:table-cell" />
+              <th className="text-right px-4 py-2.5">Δ Last Run</th>
+              <SortHeader label="Time" field="timestamp" className="text-right px-5 py-2.5 hidden lg:table-cell" />
             </tr></thead>
             <tbody className="divide-y divide-accent-border/30">
-              {runs.length > 0 ? runs.map((r, i) => {
+              {sortedRuns.length > 0 ? sortedRuns.map((r, i) => {
                 const d = r.delta_from_last_run || {}
                 const td = Object.values(d).reduce((a, b) => a + (b || 0), 0)
                 return (
@@ -137,14 +212,16 @@ export default function MissionMetrics() {
                     <td className="px-5 py-3">{i < 3 ? <div className={cn('w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-bold', i === 0 ? 'bg-accent/15 text-accent' : 'bg-bg-secondary text-text-dim')}>{i + 1}</div> : <span className="text-text-dim ml-1.5">{i + 1}</span>}</td>
                     <td className="px-4 py-3"><span className="text-text-primary font-medium">{r.model || '?'}</span></td>
                     <td className="px-4 py-3 text-right font-bold text-text-primary tabular-nums">{(r.mean || 0).toFixed(4)}</td>
-                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{(r.scores?.simple_review || 0).toFixed(4)}</td>
-                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{(r.scores?.logic_review || 0).toFixed(4)}</td>
-                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{(r.scores?.security_review || 0).toFixed(4)}</td>
-                    <td className="px-5 py-3 text-right">{td !== 0 ? <span className={cn('inline-flex items-center gap-0.5 font-semibold tabular-nums', td > 0 ? 'text-success' : 'text-danger')}>{td > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}{Math.abs(td).toFixed(4)}</span> : <span className="text-text-dim">—</span>}</td>
+                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{r.category_scores?.security != null ? r.category_scores.security.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{r.category_scores?.logic != null ? r.category_scores.logic.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-3 text-right hidden md:table-cell text-text-muted tabular-nums">{r.category_scores?.style != null ? r.category_scores.style.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-3 text-right hidden lg:table-cell text-text-muted tabular-nums">{r.category_scores?.cross_file != null ? r.category_scores.cross_file.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-3 text-right">{td !== 0 ? <span className={cn('inline-flex items-center gap-0.5 font-semibold tabular-nums', td > 0 ? 'text-success' : 'text-danger')}>{td > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}{Math.abs(td).toFixed(4)}</span> : <span className="text-text-dim">—</span>}</td>
+                    <td className="px-5 py-3 text-right hidden lg:table-cell text-[10px] text-text-dim font-mono">{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : '—'}</td>
                   </motion.tr>
                 )
               }) : (
-                <tr><td colSpan={7} className="py-16 text-center">
+                <tr><td colSpan={9} className="py-16 text-center">
                   <Trophy className="w-10 h-10 text-text-dim/20 mx-auto mb-3" />
                   <p className="text-[13px] text-text-muted font-medium">No leaderboard data yet</p>
                   <p className="text-[11px] text-text-dim mt-1">Run a baseline to populate the rankings.</p>

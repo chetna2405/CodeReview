@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { FileCode, MessageSquare, Send, CheckCircle2, AlertTriangle, ThumbsUp, Crosshair } from 'lucide-react'
+import {
+  FileCode, MessageSquare, Send, CheckCircle2, AlertTriangle, ThumbsUp,
+  Crosshair, HelpCircle, GitPullRequest, User
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import SeverityBadge from '@/components/review/SeverityBadge'
 import { api } from '@/lib/api'
+import { useSettings } from '@/App'
 
 export default function IntelReview() {
   const navigate = useNavigate()
+  const { settings, setSettings } = useSettings()
   const [state, setState] = useState(null)
   const [observation, setObservation] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -18,20 +23,43 @@ export default function IntelReview() {
   useEffect(() => { loadState() }, [])
 
   const loadState = async () => {
-    try { const s = await api.getState(); setState(s); setLoading(false) }
-    catch { setError(null); setLoading(false) }
+    try {
+      const s = await api.getState()
+      setState(s)
+      setLoading(false)
+    } catch {
+      setError(null)
+      setLoading(false)
+    }
   }
 
   const handleAction = async (action) => {
     setActionLoading(true); setError(null)
-    try { const r = await api.step(action); setObservation(r); await loadState() }
-    catch (e) { setError(e.message) }
+    try {
+      const r = await api.step(action)
+      setObservation(r)
+      // Save episode_id to settings
+      const eid = r?.metadata?.episode_id
+      if (eid && eid !== settings.episodeId) {
+        setSettings(prev => ({ ...prev, episodeId: eid }))
+      }
+      await loadState()
+      // Auto-navigate to grader on terminal action
+      if (r?.done) {
+        setTimeout(() => navigate('/grader'), 1200)
+      }
+    } catch (e) { setError(e.message) }
     finally { setActionLoading(false) }
   }
 
   const handleAddComment = () => {
     if (!commentForm.line_number || !commentForm.message) return
-    handleAction({ action_type: 'add_comment', line_number: parseInt(commentForm.line_number, 10), severity: commentForm.severity, message: commentForm.message })
+    handleAction({
+      action_type: 'add_comment',
+      line_number: parseInt(commentForm.line_number, 10),
+      severity: commentForm.severity,
+      message: commentForm.message,
+    })
     setCommentForm({ line_number: '', severity: 'major', message: '' })
   }
 
@@ -48,13 +76,14 @@ export default function IntelReview() {
   const diffLines = parseDiffLines(state?.diff_text || observation?.diff_text)
   const isActive = state && !state.is_done
   const comments = state?.comments_so_far || observation?.existing_comments || []
+  const authorResponses = state?.author_responses || observation?.author_responses || []
 
   // Empty state
-  if (!state) {
+  if (!state || (!state.task_id && !state.scenario_id)) {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20">
         <div className="w-20 h-20 rounded-2xl bg-accent-muted flex items-center justify-center mb-6">
-          <Shield className="w-10 h-10 text-accent opacity-50" />
+          <ShieldIcon className="w-10 h-10 text-accent opacity-50" />
         </div>
         <h2 className="text-xl font-semibold text-text-primary mb-2">No Active Operations</h2>
         <p className="text-sm text-text-muted text-center max-w-md mb-6">
@@ -84,10 +113,32 @@ export default function IntelReview() {
         </div>
         {isActive && (
           <div className="flex items-center gap-2">
-            <button onClick={() => handleAction({ action_type: 'finalize_review', reason: 'Review complete' })} disabled={actionLoading} className="btn-secondary flex items-center gap-2 text-[12px]">
+            <button
+              onClick={() => handleAction({ action_type: 'request_clarification', question: 'Could you clarify?' })}
+              disabled={actionLoading}
+              className="btn-secondary flex items-center gap-2 text-[12px]"
+            >
+              <HelpCircle className="w-3.5 h-3.5" /> Clarify
+            </button>
+            <button
+              onClick={() => handleAction({ action_type: 'request_changes', reason: 'Issues found' })}
+              disabled={actionLoading}
+              className="btn-secondary flex items-center gap-2 text-[12px]"
+            >
+              <GitPullRequest className="w-3.5 h-3.5" /> Request Changes
+            </button>
+            <button
+              onClick={() => handleAction({ action_type: 'finalize_review', reason: 'Review complete' })}
+              disabled={actionLoading}
+              className="btn-secondary flex items-center gap-2 text-[12px]"
+            >
               <AlertTriangle className="w-3.5 h-3.5" /> Finalize
             </button>
-            <button onClick={() => handleAction({ action_type: 'approve' })} disabled={actionLoading} className="btn-primary flex items-center gap-2 text-[12px]">
+            <button
+              onClick={() => handleAction({ action_type: 'approve' })}
+              disabled={actionLoading}
+              className="btn-primary flex items-center gap-2 text-[12px]"
+            >
               <ThumbsUp className="w-3.5 h-3.5" /> Approve
             </button>
           </div>
@@ -95,6 +146,20 @@ export default function IntelReview() {
       </div>
 
       {error && <div className="mb-4 p-3 rounded-xl bg-danger-dim border border-danger/20 text-[12px] text-danger">{error}</div>}
+
+      {/* PR Info */}
+      {(observation?.pr_description || state?.pr_description) && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="surface-card p-4 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <GitPullRequest className="w-3.5 h-3.5 text-accent" />
+            <span className="text-[12px] font-medium text-text-primary">PR Description</span>
+          </div>
+          <p className="text-[12px] text-text-muted leading-relaxed">{observation?.pr_description || state?.pr_description}</p>
+          {(observation?.commit_message || state?.commit_message) && (
+            <p className="text-[11px] text-text-dim mt-2 font-mono">commit: {observation?.commit_message || state?.commit_message}</p>
+          )}
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
         {/* Diff */}
@@ -141,7 +206,10 @@ export default function IntelReview() {
                     <option value="critical">Critical</option><option value="major">Major</option><option value="minor">Minor</option><option value="nit">Nit</option>
                   </select>
                 </div>
-                <textarea placeholder="Describe the issue..." value={commentForm.message} onChange={e => setCommentForm(p => ({ ...p, message: e.target.value }))} rows={3} className="w-full px-3 py-2 rounded-lg bg-bg-base border border-accent-border text-[12px] text-text-primary placeholder:text-text-dim outline-none resize-none focus:border-accent/40 transition-colors" />
+                <textarea placeholder="Describe the issue..." value={commentForm.message} onChange={e => setCommentForm(p => ({ ...p, message: e.target.value }))} rows={3} maxLength={500} className="w-full px-3 py-2 rounded-lg bg-bg-base border border-accent-border text-[12px] text-text-primary placeholder:text-text-dim outline-none resize-none focus:border-accent/40 transition-colors" />
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] text-text-dim">{commentForm.message.length}/500</span>
+                </div>
                 <button onClick={handleAddComment} disabled={actionLoading || !commentForm.line_number || !commentForm.message} className={cn('btn-primary w-full flex items-center justify-center gap-2', (!commentForm.line_number || !commentForm.message) && 'opacity-40 cursor-not-allowed')}>
                   <Send className="w-3.5 h-3.5" /> Submit
                 </button>
@@ -154,14 +222,27 @@ export default function IntelReview() {
               <p className="text-[13px] font-semibold text-text-primary">Findings ({comments.length})</p>
             </div>
             {comments.length > 0 ? (
-              <div className="divide-y divide-accent-border/50 max-h-[320px] overflow-y-auto">
+              <div className="divide-y divide-accent-border/50 max-h-[400px] overflow-y-auto">
                 {comments.map((c, i) => (
                   <div key={c.comment_id || i} className="px-5 py-3">
                     <div className="flex items-center gap-2 mb-1">
                       <SeverityBadge severity={c.severity || 'major'} />
                       <span className="text-[10px] font-mono text-text-dim">Line {c.line_number}</span>
+                      {c.comment_id && <span className="text-[9px] font-mono text-text-dim/50">#{c.comment_id}</span>}
                     </div>
                     <p className="text-[12px] text-text-secondary leading-relaxed">{c.message}</p>
+
+                    {/* Author response bubble for this comment */}
+                    {authorResponses[i] && (
+                      <div className="mt-2 ml-3 pl-3 border-l-2 border-accent/20">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <User className="w-3 h-3 text-accent/60" />
+                          <span className="text-[10px] font-medium text-accent/70">Author</span>
+                        </div>
+                        <p className="text-[11px] text-text-muted italic leading-relaxed">{authorResponses[i]}</p>
+                      </div>
+                    )}
+
                     {isActive && (
                       <div className="flex gap-3 mt-2">
                         <button onClick={() => handleAction({ action_type: 'stand_firm', comment_id: c.comment_id })} className="text-[10px] font-semibold text-success hover:underline">Stand Firm</button>
@@ -187,6 +268,9 @@ export default function IntelReview() {
               <p className="text-[13px] font-semibold text-text-primary mb-1">Mission Complete</p>
               <p className="text-3xl font-bold text-accent tabular-nums">{(state.final_score || 0).toFixed(4)}</p>
               <p className="text-[11px] text-text-dim mt-1">Composite Score</p>
+              <button onClick={() => navigate('/grader')} className="btn-secondary mt-3 text-[12px]">
+                View Grader Results →
+              </button>
             </motion.div>
           )}
         </motion.div>
@@ -195,6 +279,6 @@ export default function IntelReview() {
   )
 }
 
-function Shield(props) {
+function ShieldIcon(props) {
   return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>
 }

@@ -560,6 +560,7 @@ class CodeReviewEnvironment(Environment[ReviewAction, DiffObservation, ReviewSta
             "recall": grader_result.recall,
             "severity_accuracy": grader_result.severity_accuracy,
             "comment_similarity": grader_result.comment_similarity,
+            "message_quality_score": grader_result.message_quality_score,
             "issues_found": grader_result.issues_found,
             "issues_total": grader_result.issues_total,
             "false_positives": grader_result.false_positives,

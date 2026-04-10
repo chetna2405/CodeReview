@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Search, Bell, Menu } from 'lucide-react'
+import { Search, Bell, Menu, Activity } from 'lucide-react'
+import { api } from '@/lib/api'
 
 const pathNames = {
   '/': 'Command Center',
@@ -8,11 +9,25 @@ const pathNames = {
   '/review': 'Active Operations',
   '/metrics': 'Intelligence',
   '/settings': 'Settings',
+  '/grader': 'Grader Results',
+  '/replay': 'Episode Replay',
+}
+
+function formatUptime(seconds) {
+  if (!seconds && seconds !== 0) return '—'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}h ${m}m`
+  if (m > 0) return `${m}m ${s}s`
+  return `${s}s`
 }
 
 export default function Header({ onMenuClick, sidebarCollapsed }) {
   const location = useLocation()
   const [utcTime, setUtcTime] = useState('')
+  const [health, setHealth] = useState(null)
+  const [healthOk, setHealthOk] = useState(false)
 
   useEffect(() => {
     const tick = () => {
@@ -21,6 +36,18 @@ export default function Header({ onMenuClick, sidebarCollapsed }) {
     }
     tick()
     const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Poll health every 10s (F6)
+  useEffect(() => {
+    const fetchHealth = () => {
+      api.health()
+        .then(h => { setHealth(h); setHealthOk(true) })
+        .catch(() => setHealthOk(false))
+    }
+    fetchHealth()
+    const id = setInterval(fetchHealth, 10000)
     return () => clearInterval(id)
   }, [])
 
@@ -38,6 +65,26 @@ export default function Header({ onMenuClick, sidebarCollapsed }) {
       </div>
 
       <div className="flex items-center gap-6">
+        {/* Health metrics strip (F6) */}
+        <div className="hidden lg:flex items-center gap-4 text-[11px] font-mono text-text-muted">
+          <div className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-full ${healthOk ? 'bg-success drop-shadow-[0_0_6px_rgba(134,239,172,0.5)]' : 'bg-danger drop-shadow-[0_0_6px_rgba(252,165,165,0.5)]'}`} />
+            <span>{healthOk ? 'Online' : 'Offline'}</span>
+          </div>
+          {health && (
+            <>
+              <span className="text-text-dim">·</span>
+              <span>{formatUptime(health.uptime_seconds)}</span>
+              <span className="text-text-dim">·</span>
+              <span>{health.total_episodes_started || 0}/{health.total_episodes_completed || 0} ep</span>
+              <span className="text-text-dim">·</span>
+              <span className="text-text-secondary font-medium">
+                {health.mean_composite_score != null ? health.mean_composite_score.toFixed(4) : '—'}
+              </span>
+            </>
+          )}
+        </div>
+
         <span className="hidden md:block text-[12px] text-text-muted font-mono">{utcTime}</span>
 
         <div className="flex items-center gap-4 border-l border-subtle pl-6">

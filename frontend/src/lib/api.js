@@ -1,9 +1,9 @@
 /**
  * API client for CodeReviewEnv backend.
- * All routes are proxied by Vite dev server to http://localhost:8000.
+ * Uses window.location.origin so it works on both localhost and HF Spaces.
  */
 
-const BASE = '';
+const BASE = window.location.origin;
 
 async function request(url, options = {}) {
   try {
@@ -13,7 +13,8 @@ async function request(url, options = {}) {
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || `HTTP ${res.status}`);
+      const msg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail);
+      throw new Error(msg || `HTTP ${res.status}`);
     }
     return res.json();
   } catch (err) {
@@ -34,6 +35,9 @@ export const api = {
   getState: () => request('/api/state'),
   getContext: (params) =>
     request(`/api/context?${new URLSearchParams(params)}`),
+
+  // Replay (B3)
+  getReplay: (episodeId) => request(`/api/replay/${episodeId}`),
 
   // Grading & Leaderboard
   getGrader: () => request('/grader'),
