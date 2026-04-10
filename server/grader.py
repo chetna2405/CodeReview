@@ -109,7 +109,8 @@ LINE_TOLERANCE = 3
 
 _st_model: Optional[Any] = None
 _st_available: Optional[bool] = None
-
+import threading
+_st_lock = threading.Lock()
 
 def _get_st_model() -> Optional[Any]:
     """Lazy-load the sentence-transformers model. Returns None if unavailable."""
@@ -118,14 +119,19 @@ def _get_st_model() -> Optional[Any]:
         return None
     if _st_model is not None:
         return _st_model
-    try:
-        from sentence_transformers import SentenceTransformer
-        _st_model = SentenceTransformer("all-MiniLM-L6-v2")
-        _st_available = True
-        return _st_model
-    except Exception:
-        _st_available = False
-        return None
+    with _st_lock:
+        if _st_model is not None:
+            return _st_model
+        if _st_available is False:
+            return None
+        try:
+            from sentence_transformers import SentenceTransformer
+            _st_model = SentenceTransformer("all-MiniLM-L6-v2")
+            _st_available = True
+            return _st_model
+        except Exception:
+            _st_available = False
+            return None
 
 
 def _compute_cosine_similarity(texts_a: List[str], texts_b: List[str]) -> List[float]:

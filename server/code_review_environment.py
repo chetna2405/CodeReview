@@ -376,6 +376,8 @@ class CodeReviewEnvironment(Environment[ReviewAction, DiffObservation, ReviewSta
             persona = TASK_CONFIG[self._state.task_id].get("author_persona", "defensive")
             is_true_positive = any(abs(ann.get("line_number", ann.get("line", 0)) - line_number) <= 3 for ann in self._gold_annotations)
             hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+            
+            # Use synchronous fallback but with connection pooling logic managed by author_persona
             response = generate_author_response(persona, message, is_true_positive, hf_token)
             
             new_comments = list(self._state.comments_so_far) + [comment]

@@ -46,5 +46,5 @@ export const api = {
     request('/baseline', { method: 'POST', body: JSON.stringify(body) }),
 
   // Health
-  health: () => request('/health'),
+  health: () => request('/api/health'),
 };
