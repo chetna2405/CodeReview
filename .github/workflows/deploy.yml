@@ -18,4 +18,20 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git push --force https://chetna1910:$HF_TOKEN@huggingface.co/spaces/chetna1910/CodeReview HEAD:main
+          git clone https://chetna1910:$HF_TOKEN@huggingface.co/spaces/chetna1910/CodeReview hf_space
+          
+          # Sync all files except the git history and experiments images
+          rsync -av --exclude='.git' --exclude='hf_space' --exclude='experiments/*.png' ./ hf_space/
+          
+          cd hf_space
+          
+          # Fix README image links for HF space to point to GitHub raw content
+          sed -i 's|experiments/calibration_curve.png|https://raw.githubusercontent.com/chetna2405/CodeReview/main/experiments/calibration_curve.png|g' README.md || true
+          sed -i 's|experiments/baseline_curve.png|https://raw.githubusercontent.com/chetna2405/CodeReview/main/experiments/baseline_curve.png|g' README.md || true
+          sed -i 's|experiments/difficulty_discrimination.png|https://raw.githubusercontent.com/chetna2405/CodeReview/main/experiments/difficulty_discrimination.png|g' README.md || true
+          
+          git config user.email "deploy@example.com"
+          git config user.name "Deploy Bot"
+          git add .
+          git commit -m "Deploy from GitHub Actions (filtered binaries)" || true
+          git push

@@ -10,11 +10,12 @@ BASE_URL = "http://localhost:8000"
 
 def get_scenarios():
     scenarios = []
-    for f in os.listdir("data/scenarios/public/"):
-        if f.endswith(".json"):
-            with open(f"data/scenarios/public/{f}") as fp:
-                js = json.load(fp)
-                scenarios.append(js)
+    for root, _, files in os.walk("data/scenarios/public/"):
+        for f in files:
+            if f.endswith(".json"):
+                with open(os.path.join(root, f)) as fp:
+                    js = json.load(fp)
+                    scenarios.append(js)
     return scenarios
 
 def run_episode(scenario, agent_type):
@@ -71,7 +72,7 @@ if __name__ == "__main__":
     
     for agent in agents:
         print(f"  Evaluating {agent}...")
-        for i, sc in enumerate(scenarios):
+        for i, sc in enumerate(scenarios[:5]):
             reward = run_episode(sc, agent)
             # Add difficulty mapping
             difficulty = "easy"
@@ -100,10 +101,10 @@ if __name__ == "__main__":
     plt.tight_layout()
     plt.savefig("experiments/difficulty_discrimination.png")
 
-    print("2. Running 50-episode baseline convergence check...")
+    print("2. Running 20-episode baseline convergence check...")
     baseline_run = []
     target_scen = scenarios[0] if scenarios else {}
-    for i in range(50):
+    for i in range(20):
         reward = run_episode(target_scen, "Rule-Based Baseline")
         baseline_run.append({"episode": i, "reward": reward})
     

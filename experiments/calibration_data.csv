@@ -1,0 +1,21 @@
+agent,scenario_idx,difficulty,reward
+Rule-Based Baseline,0,easy,0.0
+Rule-Based Baseline,1,easy,0.0
+Rule-Based Baseline,2,easy,0.0
+Rule-Based Baseline,3,easy,0.0
+Rule-Based Baseline,4,easy,0.5828998424325671
+Qwen-1.5B,0,easy,0.0
+Qwen-1.5B,1,easy,0.0
+Qwen-1.5B,2,easy,0.6470684397834672
+Qwen-1.5B,3,easy,0.6466634601589881
+Qwen-1.5B,4,easy,0.0
+Qwen-7B,0,easy,0.5880240389233149
+Qwen-7B,1,easy,0.6455868887242217
+Qwen-7B,2,easy,0.0
+Qwen-7B,3,easy,0.5828998424325671
+Qwen-7B,4,easy,0.6515770076960326
+Qwen-32B,0,easy,0.0
+Qwen-32B,1,easy,0.0
+Qwen-32B,2,easy,0.0
+Qwen-32B,3,easy,0.0
+Qwen-32B,4,easy,0.0

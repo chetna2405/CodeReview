@@ -193,7 +193,6 @@ step_semaphore = None
 async def startup_event():
     global step_semaphore
     step_semaphore = asyncio.Semaphore(MAX_CONCURRENT_STEPS)
-    logger.info("startup_event", msg=f"Initialized step_semaphore with capacity {MAX_CONCURRENT_STEPS}")
 
 # ─── Health endpoint ─────────────────────────────────────────────────────────
 
