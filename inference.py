@@ -21,11 +21,24 @@ from typing import List, Optional
 from openai import OpenAI
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-HF_TOKEN      = os.getenv("HF_TOKEN")
-API_KEY       = os.getenv("HF_TOKEN") or os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY")
-API_BASE_URL  = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME    = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-ENV_URL       = os.getenv("ENV_URL", "https://chetna1910-codereviewenv.hf.space")
+# CRITICAL: The hackathon evaluator injects API_BASE_URL and API_KEY.
+# We MUST use those to route LLM calls through their LiteLLM proxy.
+# Do NOT fall back to HF_TOKEN or other providers for the OpenAI client.
+API_BASE_URL  = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+API_KEY       = os.environ.get("API_KEY", "")
+MODEL_NAME    = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+ENV_URL       = os.environ.get("ENV_URL", "https://chetna1910-codereview.hf.space")
+HF_TOKEN      = os.environ.get("HF_TOKEN", "")
+
+# Fallback: only use HF_TOKEN if the hackathon did NOT inject API_KEY
+if not API_KEY:
+    API_KEY = HF_TOKEN or os.environ.get("OPENAI_API_KEY", "")
+    print(f"[DEBUG] API_KEY not injected, falling back to HF_TOKEN", flush=True)
+
+print(f"[DEBUG] API_BASE_URL = {API_BASE_URL}", flush=True)
+print(f"[DEBUG] API_KEY      = {'SET (' + API_KEY[:8] + '...)' if API_KEY else 'NOT SET'}", flush=True)
+print(f"[DEBUG] MODEL_NAME   = {MODEL_NAME}", flush=True)
+print(f"[DEBUG] ENV_URL      = {ENV_URL}", flush=True)
 
 BENCHMARK             = "code-review-env"
 TASKS                 = ["simple_review", "logic_review", "security_review"]
@@ -254,9 +267,12 @@ def run_task(client: OpenAI, task_id: str) -> float:
 
 def main() -> None:
     if not API_KEY:
-        print("[DEBUG] WARNING: API_KEY/HF_TOKEN not set — LLM calls will fail", flush=True)
+        print("[DEBUG] FATAL: Neither API_KEY nor HF_TOKEN is set — LLM calls will fail", flush=True)
+        sys.exit(1)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy")
+    # Initialize OpenAI client pointing at the hackathon's LiteLLM proxy
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    print(f"[DEBUG] OpenAI client initialized: base_url={API_BASE_URL}", flush=True)
 
     all_scores: dict = {}
     for task_id in TASKS:
