@@ -66,10 +66,13 @@ class LeaderboardDB:
     def _init_db(self) -> None:
         """Create tables and set WAL mode if database doesn't exist."""
         try:
+            # Ensure parent directory exists for the SQLite file
+            if str(self._path) != ":memory:":
+                self._path.parent.mkdir(parents=True, exist_ok=True)
             with self._connect() as conn:
                 conn.executescript(_SCHEMA)
         except Exception as e:
-            # Non-fatal: fall back to JSON-based operations silently
+            # Non-fatal: fall back to in-memory operations silently
             print(f"LeaderboardDB: init failed ({e}), using in-memory fallback")
             self._path = Path(":memory:")
             with self._connect() as conn:
