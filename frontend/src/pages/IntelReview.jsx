@@ -23,8 +23,13 @@ export default function IntelReview() {
   useEffect(() => { loadState() }, [])
 
   const loadState = async () => {
+    if (!settings.episodeId) {
+      setLoading(false)
+      setError("No active episode. Start a new review first.")
+      return
+    }
     try {
-      const s = await api.getState()
+      const s = await api.getState(settings.episodeId)
       setState(s)
       setLoading(false)
     } catch {
@@ -36,7 +41,7 @@ export default function IntelReview() {
   const handleAction = async (action) => {
     setActionLoading(true); setError(null)
     try {
-      const r = await api.step(action)
+      const r = await api.step({ ...action, episode_id: settings.episodeId })
       setObservation(r)
       // Save episode_id to settings
       const eid = r?.metadata?.episode_id

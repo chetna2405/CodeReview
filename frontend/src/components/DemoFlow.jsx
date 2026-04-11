@@ -103,7 +103,7 @@ export default function DemoFlow() {
           episode_id: activeEpisodeId,
           action_type: 'add_comment',
           line_number: line2,
-          severity: 'warning',
+          severity: 'major',
           message: 'Missing input validation on email field'
         });
         await new Promise(r => setTimeout(r, 600));

@@ -32,7 +32,7 @@ export const api = {
     request('/api/reset', { method: 'POST', body: JSON.stringify(body) }),
   step: (body) =>
     request('/api/step', { method: 'POST', body: JSON.stringify(body) }),
-  getState: () => request('/api/state'),
+  getState: (episodeId) => request(`/api/state?episode_id=${episodeId}`),
   getContext: (params) =>
     request(`/api/context?${new URLSearchParams(params)}`),
 
