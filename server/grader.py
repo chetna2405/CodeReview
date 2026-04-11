@@ -346,11 +346,11 @@ def grade_episode(
     if not normalized_gold:
         # No issues to find — agent should approve
         if final_verdict in ("approve", "finalize_review"):
-            result.composite_score = 1.0
-            result.f1_score = 1.0
-            result.severity_accuracy = 1.0
-            result.comment_similarity = 1.0
-            result.message_quality_score = 1.0
+            result.composite_score = 0.999
+            result.f1_score = 0.999
+            result.severity_accuracy = 0.999
+            result.comment_similarity = 0.999
+            result.message_quality_score = 0.999
         else:
             result.composite_score = 0.5  # Unnecessary request_changes
         result.composite_score = min(max(result.composite_score, 0.001), 0.999)
@@ -473,5 +473,5 @@ def compute_partial_reward(
     if precision + recall == 0:
         return 0.0
     reward = 2 * precision * recall / (precision + recall)
-    assert 0.0 <= reward <= 1.0
+    reward = min(max(reward, 0.0), 0.999)
     return reward
