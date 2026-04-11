@@ -441,6 +441,14 @@ def grade_episode(
         "matches": [(ci, ai) for ci, ai, _ in matches],
     }
 
+    result.f1_score           = min(max(result.f1_score, 0.0), 0.999)
+    result.precision          = min(max(result.precision, 0.0), 0.999)
+    result.recall             = min(max(result.recall, 0.0), 0.999)
+    result.severity_accuracy  = min(max(result.severity_accuracy, 0.0), 0.999)
+    result.comment_similarity = min(max(result.comment_similarity, 0.0), 0.999)
+    result.message_quality_score = min(max(result.message_quality_score, 0.0), 0.999)
+    result.composite_score    = min(max(result.composite_score, 0.001), 0.999)
+
     return result
 
 
