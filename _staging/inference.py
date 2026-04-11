@@ -138,7 +138,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
     """Run a full episode for one task. Returns composite score in [0, 1]."""
     rewards:    List[float] = []
     steps_taken = 0
-    score       = 0.0
+    score       = 0.001
     success     = False
     episode_id  = ""
 
@@ -248,10 +248,10 @@ def run_task(client: OpenAI, task_id: str) -> float:
                 )
             else:
                 # Fallback: use final reward
-                score = rewards[-1] if rewards else 0.5
+                score = max(rewards[-1], 0.001) if rewards else 0.5
         except Exception as exc:
             print(f"[DEBUG] Grader fetch failed: {exc}", flush=True)
-            score = rewards[-1] if rewards else 0.5
+            score = max(rewards[-1], 0.001) if rewards else 0.5
 
         score   = min(max(score, 0.001), 0.999)
         success = score >= SUCCESS_SCORE_THRESHOLD
@@ -265,7 +265,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
         log_end(success=success, steps=steps_taken,
                 score=score, rewards=rewards)
 
-    return score
+    return min(max(score, 0.001), 0.999)
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
