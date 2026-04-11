@@ -258,7 +258,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
 
     except Exception as exc:
         print(f"[DEBUG] Task {task_id} failed: {exc}", flush=True)
-        score   = 0.0
+        score   = 0.001
         success = False
 
     finally:
