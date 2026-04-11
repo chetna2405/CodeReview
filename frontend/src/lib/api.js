@@ -3,11 +3,11 @@
  * Uses window.location.origin so it works on both localhost and HF Spaces.
  */
 
-const BASE = window.location.origin;
+const API_BASE = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000';
 
 async function request(url, options = {}) {
   try {
-    const res = await fetch(`${BASE}${url}`, {
+    const res = await fetch(`${API_BASE}${url}`, {
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
     });
@@ -40,7 +40,7 @@ export const api = {
   getReplay: (episodeId) => request(`/api/replay/${episodeId}`),
 
   // Grading & Leaderboard
-  getGrader: () => request('/grader'),
+  getGrader: (episodeId) => request(`/grader?episode_id=${episodeId}`),
   getLeaderboard: () => request('/leaderboard'),
   runBaseline: (body) =>
     request('/baseline', { method: 'POST', body: JSON.stringify(body) }),

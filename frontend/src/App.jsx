@@ -1,5 +1,6 @@
 import { useState, createContext, useContext } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import AppLayout from './components/layout/AppLayout'
 import CommandCenter from './pages/CommandCenter'
@@ -21,6 +22,17 @@ export default function App() {
     modelLabel: 'rule-based',
     episodeId: null,
   })
+
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('demo') === 'replay' && urlParams.get('episode_id')) {
+      const eid = urlParams.get('episode_id')
+      setSettings(s => ({ ...s, episodeId: eid }))
+      navigate(`/grader?episode_id=${eid}`, { replace: true })
+    }
+  }, [navigate])
 
   return (
     <SettingsContext.Provider value={{ settings, setSettings }}>

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Award, BarChart3, Target, AlertOctagon, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { useSettings } from '../App'
 
 const scoreColor = (v) => {
   if (v >= 0.7) return 'text-success'
@@ -61,12 +62,27 @@ export default function GraderPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  const { settings } = useSettings()
+
   useEffect(() => {
-    api.getGrader()
+    // Check local query params via window.location (for the shareable URL ?demo=replay&episode_id=...)
+    const urlParams = new URLSearchParams(window.location.search)
+    const urlEpisodeId = urlParams.get('episode_id')
+    const activeEpisodeId = urlEpisodeId || settings.episodeId
+
+    if (!activeEpisodeId) {
+      setLoading(false)
+      setError(null)
+      setResults(null)
+      return
+    }
+
+    setLoading(true)
+    api.getGrader(activeEpisodeId)
       .then(r => { setResults(r); setError(null) })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [settings.episodeId])
 
   if (loading) {
     return (

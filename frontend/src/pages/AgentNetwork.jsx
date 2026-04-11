@@ -76,6 +76,7 @@ export default function AgentNetwork() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
                   onClick={() => setSelectedTask(taskId)}
+                  data-demo-target={taskId}
                   className={cn(
                     'surface-card text-left p-5 cursor-pointer transition-all duration-200',
                     sel ? 'border-accent/40 glow-accent' : 'hover:border-accent-hover',

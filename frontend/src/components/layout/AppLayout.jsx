@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import DemoFlow from '../DemoFlow'
 
 export default function AppLayout({ children }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -17,6 +18,8 @@ export default function AppLayout({ children }) {
           {children}
         </main>
       </div>
+      
+      <DemoFlow />
     </div>
   )
 }

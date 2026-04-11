@@ -63,10 +63,14 @@ export default function CommandCenter() {
       .finally(() => setLoading(false))
   }, [])
 
-  // If leaderboard is empty, show the mock but explicitly labeled to prevent deception.
+  const displayTrendData = healthData && healthData.total_episodes_completed > 0
+    ? trendData
+    : [{ d: 'Start', v: 0 }, { d: 'Now', v: 0 }]
+
+  // If leaderboard is empty, show empty state instead of mock data
   const displayAgents = leaderboard.length > 0 
     ? leaderboard.map(l => ({ name: l.model, score: l.mean, reviews: '-', trend: 0 }))
-    : topAgentsMock.map(a => ({ ...a, name: `${a.name} (Simulated)` }))
+    : []
 
   return (
     <motion.div
@@ -127,7 +131,7 @@ export default function CommandCenter() {
             </div>
             <div className="p-6 w-full h-[300px]">
               <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={trendData}>
+                <AreaChart data={displayTrendData}>
                   <defs>
                     <linearGradient id="accentGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#C8A2FF" stopOpacity={0.15} />
@@ -164,26 +168,32 @@ export default function CommandCenter() {
               </button>
             </div>
             <div className="p-2 space-y-1">
-              {displayAgents.map((a, i) => (
-                <div
-                  key={a.name}
-                  className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-bg-elevated transition-colors cursor-default"
-                >
-                  <div className={cn(
-                    'w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-medium shrink-0',
-                    i === 0 ? 'bg-accent/10 border border-accent/20 text-accent' : 'text-text-muted'
-                  )}>
-                    {i + 1}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[13px] font-medium text-text-primary">{a.name}</p>
-                  </div>
-                  <p className="text-[12px] text-text-muted">{a.reviews} rev</p>
-                  <div className="w-16 text-right">
-                    <p className="text-[13px] font-medium text-text-primary">{a.score.toFixed(2)}</p>
-                  </div>
+              {displayAgents.length === 0 ? (
+                <div className="p-4 text-center">
+                  <p className="text-[13px] text-text-muted">No agents benchmarked yet &mdash; run a baseline</p>
                 </div>
-              ))}
+              ) : (
+                displayAgents.map((a, i) => (
+                  <div
+                    key={a.name}
+                    className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-bg-elevated transition-colors cursor-default"
+                  >
+                    <div className={cn(
+                      'w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-medium shrink-0',
+                      i === 0 ? 'bg-accent/10 border border-accent/20 text-accent' : 'text-text-muted'
+                    )}>
+                      {i + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-[13px] font-medium text-text-primary">{a.name}</p>
+                    </div>
+                    <p className="text-[12px] text-text-muted">{a.reviews} rev</p>
+                    <div className="w-16 text-right">
+                      <p className="text-[13px] font-medium text-text-primary">{a.score.toFixed(2)}</p>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </motion.div>
 

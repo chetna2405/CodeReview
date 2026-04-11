@@ -112,6 +112,7 @@ async def log_requests(request: Request, call_next):
         latency_ms=latency_ms,
     )
     response.headers["X-Request-ID"] = request_id
+    response.headers["Permissions-Policy"] = "fullscreen=(self)"
     return response
 
 
