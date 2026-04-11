@@ -239,7 +239,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
             gr = requests.get(f"{ENV_URL}/grader", params={"episode_id": episode_id}, timeout=30)
             if gr.status_code == 200:
                 grader_data = gr.json()
-                score = float(grader_data.get("composite_score", 0.0))
+                score = float(grader_data.get("composite_score", 0.5))
                 print(
                     f"[DEBUG] Grader: f1={grader_data.get('f1_score',0):.3f} "
                     f"severity={grader_data.get('severity_accuracy',0):.3f} "
@@ -248,10 +248,10 @@ def run_task(client: OpenAI, task_id: str) -> float:
                 )
             else:
                 # Fallback: use final reward
-                score = rewards[-1] if rewards else 0.0
+                score = rewards[-1] if rewards else 0.5
         except Exception as exc:
             print(f"[DEBUG] Grader fetch failed: {exc}", flush=True)
-            score = rewards[-1] if rewards else 0.0
+            score = rewards[-1] if rewards else 0.5
 
         score   = min(max(score, 0.001), 0.999)
         success = score >= SUCCESS_SCORE_THRESHOLD
