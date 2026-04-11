@@ -680,7 +680,14 @@ if frontend_dist.exists() and (frontend_dist / "index.html").exists():
         file_path = frontend_dist / catchall
         if catchall and file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        return FileResponse(frontend_dist / "index.html")
+        return FileResponse(
+            frontend_dist / "index.html",
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
 else:
     @app.get("/", response_class=HTMLResponse)
