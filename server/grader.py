@@ -333,11 +333,12 @@ def grade_episode(
             result.composite_score = 0.0
             result.issues_found = 0
 
+        result.composite_score = min(max(result.composite_score, 0.001), 0.999)
         result.f1_score = result.composite_score
         result.severity_accuracy = result.composite_score
         result.comment_similarity = result.composite_score
         result.message_quality_score = result.composite_score
-        assert 0.0 <= result.composite_score <= 1.0
+        assert 0.0 < result.composite_score < 1.0
         return result
 
     result.issues_total = len(normalized_gold)
@@ -352,12 +353,13 @@ def grade_episode(
             result.message_quality_score = 1.0
         else:
             result.composite_score = 0.5  # Unnecessary request_changes
-        assert 0.0 <= result.composite_score <= 1.0
+        result.composite_score = min(max(result.composite_score, 0.001), 0.999)
+        assert 0.0 < result.composite_score < 1.0
         return result
 
     if not agent_comments:
-        result.composite_score = 0.0
-        assert 0.0 <= result.composite_score <= 1.0
+        result.composite_score = 0.001
+        assert 0.0 < result.composite_score < 1.0
         return result
 
     # 1. Match agent comments to gold annotations
@@ -429,8 +431,8 @@ def grade_episode(
         + W_COMMENT * result.comment_similarity
         + W_SEMANTIC * result.message_quality_score
     )
-    result.composite_score = max(0.0, min(1.0, result.composite_score))
-    assert 0.0 <= result.composite_score <= 1.0
+    result.composite_score = max(0.001, min(0.999, result.composite_score))
+    assert 0.0 < result.composite_score < 1.0
 
     result.details = {
         "true_positives": true_positives,
