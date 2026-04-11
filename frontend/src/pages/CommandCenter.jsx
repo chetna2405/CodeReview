@@ -125,7 +125,7 @@ export default function CommandCenter() {
                 <p className="text-[12px] text-text-muted mt-0.5">Aggregated weekly volume</p>
               </div>
             </div>
-            <div className="p-6 flex-1 min-h-[300px]">
+            <div className="p-6 w-full h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={trendData}>
                   <defs>
