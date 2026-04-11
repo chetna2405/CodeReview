@@ -140,6 +140,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
     steps_taken = 0
     score       = 0.0
     success     = False
+    episode_id  = ""
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
@@ -152,7 +153,9 @@ def run_task(client: OpenAI, task_id: str) -> float:
         )
         r.raise_for_status()
         obs  = r.json()
+        episode_id = obs.get("episode_id", "")
         done = bool(obs.get("done", False))
+        print(f"[DEBUG] episode_id={episode_id}", flush=True)
 
         # ── LLM review ───────────────────────────────────────────────────────
         comments = get_llm_review(client, obs)
@@ -184,6 +187,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
                         "message":      message,
                         "reason":       reason,
                     },
+                    headers={"X-Episode-ID": episode_id},
                     timeout=60,
                 )
                 r.raise_for_status()
@@ -213,6 +217,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
                 r = requests.post(
                     f"{ENV_URL}/api/step",
                     json={"action_type": end_action, "reason": end_reason},
+                    headers={"X-Episode-ID": episode_id},
                     timeout=60,
                 )
                 r.raise_for_status()
@@ -231,7 +236,7 @@ def run_task(client: OpenAI, task_id: str) -> float:
 
         # ── Get composite score from grader ───────────────────────────────────
         try:
-            gr = requests.get(f"{ENV_URL}/grader", timeout=30)
+            gr = requests.get(f"{ENV_URL}/grader", params={"episode_id": episode_id}, timeout=30)
             if gr.status_code == 200:
                 grader_data = gr.json()
                 score = float(grader_data.get("composite_score", 0.0))
