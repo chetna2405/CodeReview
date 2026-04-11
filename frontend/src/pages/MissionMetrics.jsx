@@ -136,7 +136,7 @@ export default function MissionMetrics() {
           </div>
           <div className="px-4 pb-4 h-72">
             {barData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={barData} barGap={2}>
                   <defs>
                     <linearGradient id="barAccent" x1="0" y1="0" x2="0" y2="1">
@@ -169,7 +169,7 @@ export default function MissionMetrics() {
             <h3 className="text-[13px] font-semibold text-text-primary">Skill Radar</h3>
           </div>
           <div className="px-4 pb-4 h-72">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={280}>
               <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
                 <PolarGrid stroke="rgba(200,162,255,0.08)" />
                 <PolarAngleAxis dataKey="s" tick={{ fontSize: 10, fill: '#A1A1AA' }} />
